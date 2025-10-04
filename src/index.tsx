@@ -58,8 +58,28 @@ export class MnnLlmSession {
   private stopRequested: boolean = false;
 
   /**
-   * Initialize the LLM session with model configuration
-   * @throws Error if initialization fails
+   * Initialize the LLM session with model configuration.
+   *
+   * @param config - Session configuration
+   * @param config.modelDir - Path to the model directory (required)
+   * @param config.maxNewTokens - Maximum tokens to generate (default: 2048)
+   * @param config.systemPrompt - System prompt for chat models (default: 'You are a helpful assistant.')
+   * @param config.keepHistory - Enable conversation history (default: true)
+   * @param config.mergedConfig - JSON config for MNN (optional)
+   * @param config.extraConfig - Additional JSON config (optional)
+   * @param config.chatHistory - Initial chat history (optional)
+   *
+   * @throws Error if initialization fails or session is already initialized
+   *
+   * @example
+   * ```typescript
+   * await session.init({
+   *   modelDir: '/sdcard/models/llama-3-8b',
+   *   maxNewTokens: 2048,
+   *   systemPrompt: 'You are a helpful AI assistant.',
+   *   keepHistory: true
+   * });
+   * ```
    */
   async init(config: LlmSessionConfig): Promise<void> {
     if (this.isInitialized) {
@@ -106,7 +126,18 @@ export class MnnLlmSession {
   }
 
   /**
-   * Release native resources - MUST be called when done
+   * Release native resources and cleanup the session.
+   *
+   * **IMPORTANT:** Always call this when done to prevent memory leaks!
+   *
+   * @example
+   * ```typescript
+   * useEffect(() => {
+   *   return () => {
+   *     session.release().catch(console.error);
+   *   };
+   * }, []);
+   * ```
    */
   async release(): Promise<void> {
     this.ensureInitialized();
@@ -193,7 +224,32 @@ export class MnnLlmSession {
   }
 
   /**
-   * Submit prompt with event-based streaming
+   * Submit a prompt with streaming callbacks and await final metrics.
+   *
+   * This method provides both real-time streaming via callbacks AND returns a Promise
+   * that resolves with the final metrics when generation completes.
+   *
+   * @param prompt - The input text to generate from
+   * @param keepHistory - Whether to add this exchange to conversation history
+   * @param onChunk - Optional callback for each generated text chunk (streaming)
+   * @param onComplete - Optional callback when generation completes with metrics
+   * @param onError - Optional callback for error handling
+   * @returns Promise<LlmMetrics> - Resolves with final generation metrics
+   *
+   * @example
+   * ```typescript
+   * // Use both callbacks and await the result
+   * const metrics = await session.submitPrompt(
+   *   'Write a haiku',
+   *   true,
+   *   (chunk) => console.log(chunk),      // Stream each token
+   *   (metrics) => console.log('Done!'),  // Called on completion
+   *   (error) => console.error(error)     // Handle errors
+   * );
+   *
+   * // Access final metrics from Promise
+   * console.log('Total tokens:', metrics.decodeLen);
+   * ```
    */
   async submitPrompt(
     prompt: string,
@@ -309,7 +365,16 @@ export class MnnLlmSession {
   }
 
   /**
-   * Clear conversation history
+   * Clear the conversation history.
+   *
+   * This removes all previous messages from the session but keeps
+   * the model loaded and ready for new conversations.
+   *
+   * @example
+   * ```typescript
+   * await session.clearHistory();
+   * console.log('Chat history cleared');
+   * ```
    */
   async clearHistory(): Promise<void> {
     this.ensureInitialized();
@@ -333,7 +398,18 @@ export class MnnLlmSession {
   }
 
   /**
-   * Stop the current generation at the native level
+   * Stop the current text generation immediately.
+   *
+   * This method will interrupt ongoing generation and cleanup listeners.
+   * Safe to call even if no generation is in progress.
+   *
+   * @example
+   * ```typescript
+   * const handleStop = async () => {
+   *   await session.stop();
+   *   setIsGenerating(false);
+   * };
+   * ```
    */
   async stop(): Promise<void> {
     this.ensureInitialized();
@@ -360,7 +436,35 @@ export class MnnLlmSession {
 }
 
 /**
- * Factory function to create a new LLM session
+ * Factory function to create a new LLM session instance.
+ *
+ * This is the recommended way to create sessions as shown in the example app.
+ *
+ * @returns A new MnnLlmSession instance
+ *
+ * @example
+ * ```typescript
+ * import { createMnnLlmSession } from 'mnn-rn';
+ *
+ * function MyComponent() {
+ *   const [session] = useState(() => createMnnLlmSession());
+ *
+ *   useEffect(() => {
+ *     session.init({
+ *       modelDir: '/sdcard/models/llama',
+ *       maxNewTokens: 2048,
+ *       systemPrompt: 'You are a helpful AI assistant.',
+ *       keepHistory: true
+ *     });
+ *
+ *     return () => {
+ *       session.release().catch(console.error);
+ *     };
+ *   }, []);
+ *
+ *   // ... rest of component
+ * }
+ * ```
  */
 export function createMnnLlmSession(): MnnLlmSession {
   return new MnnLlmSession();

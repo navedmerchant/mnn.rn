@@ -48,20 +48,21 @@ const session = createMnnLlmSession();
 await session.init({
   modelDir: '/sdcard/models/llama-3-8b',
   maxNewTokens: 2048,
-  systemPrompt: 'You are a helpful assistant.'
+  systemPrompt: 'You are a helpful AI assistant.',
+  keepHistory: true
 });
 
-// Generate text with streaming
-session.submitPrompt(
+// Generate text with streaming - now returns Promise!
+const metrics = await session.submitPrompt(
   'Write a haiku about React Native',
   true,
   (chunk: string) => {
     // Called for each token
     console.log('Chunk:', chunk);
   },
-  (metrics: LlmMetrics) => {
+  (metricsData: LlmMetrics) => {
     // Called when complete
-    console.log('Done!', metrics);
+    console.log('Done!', metricsData);
   },
   (error: string) => {
     // Called on error
@@ -69,37 +70,48 @@ session.submitPrompt(
   }
 );
 
+// Access final metrics from Promise
+console.log('Generated', metrics.decodeLen, 'tokens');
+console.log('Speed:', (metrics.decodeLen / (metrics.decodeTime / 1_000_000)).toFixed(1), 'tok/s');
+
 // Clean up when done
 await session.release();
 ```
 
 ## 🎯 Usage Patterns
 
-### Pattern 1: Callback-Based Streaming
+### Pattern 1: Streaming with Callbacks & Promise
 
-Real-time streaming with callbacks (recommended for UI updates):
+Real-time streaming with callbacks AND await for final metrics (recommended):
 
 ```typescript
 import { createMnnLlmSession } from 'mnn-rn';
 
 const session = createMnnLlmSession();
-await session.init({ modelDir: '/sdcard/models/llama' });
+await session.init({
+  modelDir: '/sdcard/models/llama',
+  maxNewTokens: 2048,
+  systemPrompt: 'You are a helpful AI assistant.',
+  keepHistory: true
+});
 
 let fullResponse = '';
 
-session.submitPrompt(
+const metrics = await session.submitPrompt(
   'Explain quantum computing',
   true,
   (chunk) => {
     fullResponse += chunk;
     console.log('Streaming:', chunk);
   },
-  (metrics) => {
-    console.log('Final response:', fullResponse);
-    console.log('Tokens:', metrics.decodeLen);
-    console.log('Speed:', metrics.decodeLen / (metrics.decodeTime / 1_000_000), 'tok/s');
+  (metricsData) => {
+    console.log('Generation complete!');
   }
 );
+
+console.log('Final response:', fullResponse);
+console.log('Tokens:', metrics.decodeLen);
+console.log('Speed:', (metrics.decodeLen / (metrics.decodeTime / 1_000_000)).toFixed(1), 'tok/s');
 ```
 
 ### Pattern 2: Async/Await
@@ -154,37 +166,51 @@ function ChatBot() {
   useEffect(() => {
     session.init({
       modelDir: '/sdcard/models/llama',
-      maxNewTokens: 2048
+      maxNewTokens: 2048,
+      systemPrompt: 'You are a helpful AI assistant.',
+      keepHistory: true
     });
     
     // Clean up on unmount
     return () => {
-      session.release();
+      session.release().catch(console.error);
     };
   }, []);
   
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!prompt.trim()) return;
     
     setIsGenerating(true);
     setResponse('');
     setMetrics(null);
     
-    session.submitPrompt(
-      prompt,
-      true,
-      (chunk) => {
-        setResponse(prev => prev + chunk);
-      },
-      (finalMetrics) => {
-        setMetrics(finalMetrics);
-        setIsGenerating(false);
-      },
-      (error) => {
-        console.error(error);
-        setIsGenerating(false);
-      }
-    );
+    try {
+      const finalMetrics = await session.submitPrompt(
+        prompt,
+        true,
+        (chunk) => {
+          setResponse(prev => prev + chunk);
+        },
+        (metricsData) => {
+          setMetrics(metricsData);
+        },
+        (error) => {
+          console.error('Generation error:', error);
+        }
+      );
+      
+      // Can also use metrics from Promise result
+      setMetrics(finalMetrics);
+    } catch (error: any) {
+      console.error('Error:', error);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+  
+  const handleStop = async () => {
+    await session.stop();
+    setIsGenerating(false);
   };
   
   return (
@@ -200,12 +226,19 @@ function ChatBot() {
         onPress={handleSubmit}
         disabled={isGenerating}
       />
+      {isGenerating && (
+        <Button
+          title="Stop Generation"
+          onPress={handleStop}
+        />
+      )}
       <Text>{response}</Text>
       {isGenerating && <ActivityIndicator />}
       {metrics && (
         <Text>
           Generated {metrics.decodeLen} tokens in{' '}
           {(metrics.decodeTime / 1_000_000).toFixed(2)}s
+          ({(metrics.decodeLen / (metrics.decodeTime / 1_000_000)).toFixed(1)} tok/s)
         </Text>
       )}
     </View>
@@ -293,7 +326,7 @@ await session.reset();
 
 ## 📊 Performance Metrics
 
-Every generation returns performance metrics:
+Every generation returns performance metrics via Promise:
 
 ```typescript
 interface LlmMetrics {
@@ -303,9 +336,31 @@ interface LlmMetrics {
   decodeTime: number;     // Decode time (microseconds)
 }
 
+// Get metrics from Promise
+const metrics = await session.submitPrompt(
+  prompt,
+  true,
+  (chunk) => console.log(chunk)
+);
+
 // Calculate tokens per second
 const tokensPerSecond = metrics.decodeLen / (metrics.decodeTime / 1_000_000);
 console.log(`Speed: ${tokensPerSecond.toFixed(1)} tok/s`);
+
+// Real-time calculation during streaming (from App.tsx)
+const startTime = Date.now();
+let chunkCount = 0;
+
+await session.submitPrompt(
+  prompt,
+  true,
+  (chunk) => {
+    chunkCount++;
+    const elapsed = (Date.now() - startTime) / 1000;
+    const currentSpeed = chunkCount / elapsed;
+    console.log(`Current speed: ${currentSpeed.toFixed(1)} tok/s`);
+  }
+);
 ```
 
 ## 🎨 Example App

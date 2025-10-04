@@ -34,16 +34,20 @@ const session = createMnnLlmSession();
 await session.init({
   modelDir: '/sdcard/models/llama-3-8b',
   maxNewTokens: 2048,
+  systemPrompt: 'You are a helpful AI assistant.',
+  keepHistory: true
 });
 
-// Generate with streaming
-session.submitPrompt(
+// Generate with streaming - now returns Promise!
+const metrics = await session.submitPrompt(
   'Write a haiku about React Native',
   true,
   (chunk) => console.log(chunk),      // Each token
-  (metrics) => console.log(metrics),  // Completion
+  (metrics) => console.log('Done!'),  // Completion callback
   (error) => console.error(error)     // Errors
 );
+
+console.log('Generated', metrics.decodeLen, 'tokens');
 
 // Clean up
 await session.release();
@@ -74,38 +78,48 @@ await session.release();
 ### Text Generation
 
 ```typescript
-// Callback-based streaming
-session.submitPrompt(
+// Streaming with callbacks AND Promise (recommended)
+const metrics = await session.submitPrompt(
   prompt: string,
   keepHistory: boolean,
-  onChunk: (chunk: string) => void,
-  onComplete: (metrics: LlmMetrics) => void,
+  onChunk?: (chunk: string) => void,
+  onComplete?: (metrics: LlmMetrics) => void,
   onError?: (error: string) => void
-): void
+): Promise<LlmMetrics>
 
-// Promise-based with streaming
-await session.submitPromptAsync(
+// Alternative: Promise-based with streaming
+const metrics = await session.submitPromptAsync(
   prompt: string,
   keepHistory: boolean,
   onChunk?: (chunk: string) => void
 ): Promise<LlmMetrics>
 
 // Conversation with history
-session.submitWithHistory(
+const metrics = await session.submitWithHistory(
   messages: LlmMessage[],
-  onChunk: (chunk: string) => void,
-  onComplete: (metrics: LlmMetrics) => void,
+  onChunk?: (chunk: string) => void,
+  onComplete?: (metrics: LlmMetrics) => void,
   onError?: (error: string) => void
-): void
+): Promise<LlmMetrics>
+
+// Stop generation
+await session.stop();
 ```
 
 ### Configuration
 
 ```typescript
+// Update settings at runtime
 await session.updateMaxNewTokens(512);
 await session.updateSystemPrompt('You are a helpful assistant.');
 await session.updateConfig(JSON.stringify({ temperature: 0.7 }));
+
+// Manage conversation
 await session.clearHistory();
+await session.reset();
+
+// Stop ongoing generation
+await session.stop();
 ```
 
 See [API.md](./API.md) for complete API reference.

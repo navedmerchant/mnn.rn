@@ -54,17 +54,22 @@ const session = createMnnLlmSession();
 await session.init({
   modelDir: '/sdcard/models/llama-3-8b',
   maxNewTokens: 2048,
-  systemPrompt: 'You are a helpful assistant.'
+  systemPrompt: 'You are a helpful assistant.',
+  keepHistory: true
 });
 
-// Generate with streaming
-session.submitPrompt(
+// Generate with streaming - now returns Promise!
+const metrics = await session.submitPrompt(
   'Write a haiku about coding',
   true,
-  (chunk) => console.log(chunk),           // Each token
-  (metrics) => console.log('Done!', metrics), // Completion
-  (error) => console.error(error)          // Errors
+  (chunk) => console.log(chunk),              // Each token
+  (metricsData) => console.log('Done!'),      // Completion callback
+  (error) => console.error(error)             // Errors
 );
+
+// Access final metrics from Promise
+console.log('Generated', metrics.decodeLen, 'tokens');
+console.log('Speed:', (metrics.decodeLen / (metrics.decodeTime / 1_000_000)).toFixed(1), 'tok/s');
 
 // Clean up
 await session.release();
@@ -116,39 +121,45 @@ await session.init({
 
 ---
 
-##### `submitPrompt(prompt, keepHistory, onChunk, onComplete, onError?): void`
+##### `submitPrompt(prompt, keepHistory, onChunk?, onComplete?, onError?): Promise<LlmMetrics>`
 
-Submit a prompt with streaming callbacks.
+Submit a prompt with streaming callbacks AND await final metrics.
+
+This method provides both real-time streaming via callbacks AND returns a Promise that resolves with the final metrics when generation completes.
 
 **Parameters:**
 - `prompt` (string): Input text
 - `keepHistory` (boolean): Add to conversation history
-- `onChunk` (function): Called for each generated chunk
+- `onChunk` (function, optional): Called for each generated chunk
   - Signature: `(chunk: string) => void`
-- `onComplete` (function): Called when generation completes
+- `onComplete` (function, optional): Called when generation completes
   - Signature: `(metrics: LlmMetrics) => void`
 - `onError` (function, optional): Called on error
   - Signature: `(error: string) => void`
 
-**Returns:** void (callbacks handle results)
+**Returns:** Promise<LlmMetrics> - Final generation metrics
 
 **Example:**
 ```typescript
-session.submitPrompt(
+// Use both callbacks and await the result
+const metrics = await session.submitPrompt(
   'Explain React hooks',
   true,
   (chunk) => {
-    // Update UI with each chunk
+    // Update UI with each chunk in real-time
     setResponse(prev => prev + chunk);
   },
   (metrics) => {
-    console.log('Generated', metrics.decodeLen, 'tokens');
-    console.log('Speed:', metrics.decodeLen / (metrics.decodeTime / 1000000), 'tok/s');
+    console.log('Generation complete!');
   },
   (error) => {
     Alert.alert('Error', error);
   }
 );
+
+// Access final metrics from Promise
+console.log('Generated', metrics.decodeLen, 'tokens');
+console.log('Speed:', metrics.decodeLen / (metrics.decodeTime / 1000000), 'tok/s');
 ```
 
 ---
@@ -306,6 +317,21 @@ Reset the session state.
 
 ---
 
+##### `stop(): Promise<void>`
+
+Stop the current generation immediately.
+
+**Example:**
+```typescript
+// Stop generation mid-stream
+const handleStop = async () => {
+  await session.stop();
+  setIsGenerating(false);
+};
+```
+
+---
+
 ##### `release(): Promise<void>`
 
 Release the session and free native resources.
@@ -316,7 +342,7 @@ Release the session and free native resources.
 ```typescript
 useEffect(() => {
   return () => {
-    session.release();
+    session.release().catch(console.error);
   };
 }, []);
 ```
@@ -356,8 +382,6 @@ interface LlmMessage {
 interface LlmMetrics {
   promptLen: number;        // Input tokens
   decodeLen: number;        // Generated tokens
-  visionTime: number;       // Vision processing time (μs)
-  audioTime: number;        // Audio processing time (μs)
   prefillTime: number;      // Prefill time (μs)
   decodeTime: number;       // Decode time (μs)
 }
@@ -366,6 +390,19 @@ interface LlmMetrics {
 **Calculate tokens/second:**
 ```typescript
 const tokensPerSecond = metrics.decodeLen / (metrics.decodeTime / 1_000_000);
+```
+
+**Example from App.tsx:**
+```typescript
+// Real-time calculation during streaming
+const elapsed = (Date.now() - startTimeMs) / 1000;
+if (elapsed > 0) {
+  setTokensPerSecond(chunkCount / elapsed);
+}
+
+// Final calculation from metrics
+const totalTime = metrics.decodeTime / 1_000_000; // Convert μs to seconds
+const finalSpeed = metrics.decodeLen / totalTime;
 ```
 
 ---
@@ -412,7 +449,7 @@ Called when an error occurs.
 
 ## Usage Examples
 
-### Basic Streaming
+### Basic Streaming with Await
 
 ```typescript
 import { createMnnLlmSession } from 'mnn-rn';
@@ -425,9 +462,9 @@ await session.init({
   maxNewTokens: 1024
 });
 
-// Generate with streaming
+// Generate with streaming - returns Promise
 let fullResponse = '';
-session.submitPrompt(
+const metrics = await session.submitPrompt(
   'Explain quantum computing in simple terms',
   true,
   (chunk) => {
@@ -435,11 +472,14 @@ session.submitPrompt(
     console.log(chunk);
   },
   (metrics) => {
-    console.log('Final response:', fullResponse);
-    console.log('Tokens:', metrics.decodeLen);
-    console.log('Time:', metrics.decodeTime / 1000000, 'seconds');
+    console.log('Generation complete!');
   }
 );
+
+// Access final metrics from Promise
+console.log('Final response:', fullResponse);
+console.log('Tokens:', metrics.decodeLen);
+console.log('Time:', metrics.decodeTime / 1000000, 'seconds');
 ```
 
 ### React Component
@@ -448,43 +488,72 @@ session.submitPrompt(
 function ChatBot() {
   const [session] = useState(() => createMnnLlmSession());
   const [response, setResponse] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [metrics, setMetrics] = useState<LlmMetrics | null>(null);
 
   useEffect(() => {
     session.init({
       modelDir: '/sdcard/models/llama',
-      maxNewTokens: 2048
+      maxNewTokens: 2048,
+      systemPrompt: 'You are a helpful AI assistant.',
+      keepHistory: true
     });
     
-    return () => session.release();
+    return () => {
+      session.release().catch(console.error);
+    };
   }, []);
 
-  const handleSubmit = (prompt: string) => {
-    setIsLoading(true);
+  const handleSubmit = async (prompt: string) => {
+    setIsGenerating(true);
     setResponse('');
+    setMetrics(null);
 
-    session.submitPrompt(
-      prompt,
-      true,
-      (chunk) => setResponse(prev => prev + chunk),
-      () => setIsLoading(false),
-      (error) => {
-        Alert.alert('Error', error);
-        setIsLoading(false);
-      }
-    );
+    try {
+      const finalMetrics = await session.submitPrompt(
+        prompt,
+        true,
+        (chunk) => setResponse(prev => prev + chunk),
+        (metricsData) => {
+          setMetrics(metricsData);
+        },
+        (error) => {
+          Alert.alert('Error', error);
+        }
+      );
+      
+      // Can also use metrics from Promise result
+      setMetrics(finalMetrics);
+    } catch (error: any) {
+      Alert.alert('Error', error.message);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleStop = async () => {
+    await session.stop();
+    setIsGenerating(false);
   };
 
   return (
     <View>
       <Text>{response}</Text>
-      {isLoading && <ActivityIndicator />}
+      {isGenerating && <ActivityIndicator />}
+      {isGenerating && (
+        <TouchableOpacity onPress={handleStop}>
+          <Text>Stop Generation</Text>
+        </TouchableOpacity>
+      )}
+      {metrics && (
+        <Text>Speed: {(metrics.decodeLen / (metrics.decodeTime / 1000000)).toFixed(1)} tok/s</Text>
+      )}
     </View>
   );
 }
 ```
 
-### Async/Await Pattern
+### Async/Await Pattern (With submitPromptAsync)
 
 ```typescript
 async function generateText(prompt: string) {
@@ -514,6 +583,8 @@ async function generateText(prompt: string) {
   }
 }
 ```
+
+Note: [`submitPrompt()`](src/index.tsx:198) now also returns a Promise, so you can use it with await as well. Both methods support callbacks + Promise return value.
 
 ### Conversation History
 
