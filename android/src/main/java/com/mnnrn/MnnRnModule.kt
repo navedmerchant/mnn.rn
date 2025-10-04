@@ -6,6 +6,7 @@ import com.facebook.react.module.annotations.ReactModule
 import com.facebook.react.modules.core.DeviceEventManagerModule
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicBoolean
 
 @ReactModule(name = MnnRnModule.NAME)
 class MnnRnModule(reactContext: ReactApplicationContext) :
@@ -13,6 +14,7 @@ class MnnRnModule(reactContext: ReactApplicationContext) :
 
   private val sessionMap = ConcurrentHashMap<Long, Long>()
   private val sessionIdCounter = AtomicLong(1)
+  private val stopFlags = ConcurrentHashMap<Long, AtomicBoolean>()
 
   override fun getName(): String = NAME
 
@@ -47,7 +49,9 @@ class MnnRnModule(reactContext: ReactApplicationContext) :
 
   @ReactMethod
   override fun release(sessionId: Double, promise: Promise) {
-    val nativePtr = sessionMap.remove(sessionId.toLong())
+    val sid = sessionId.toLong()
+    val nativePtr = sessionMap.remove(sid)
+    stopFlags.remove(sid)
     if (nativePtr != null) {
       releaseNative(nativePtr)
       promise.resolve(null)
@@ -84,13 +88,21 @@ class MnnRnModule(reactContext: ReactApplicationContext) :
 
     Thread {
       try {
+        val sid = sessionId.toLong()
+        val stopFlag = stopFlags.getOrPut(sid, { AtomicBoolean(false) })
+        stopFlag.set(false) // Reset stop flag at start
+        
         // Create progress listener that emits events
         val progressListener = ProgressListener { text ->
-          sendEvent("onLlmChunk", Arguments.createMap().apply {
-            putDouble("sessionId", sessionId)
-            putString("chunk", text)
-          })
-          false // Continue generation
+          if (stopFlag.get()) {
+            true // Stop generation
+          } else {
+            sendEvent("onLlmChunk", Arguments.createMap().apply {
+              putDouble("sessionId", sessionId)
+              putString("chunk", text)
+            })
+            false // Continue generation
+          }
         }
 
         val metricsMap = submitNative(nativePtr, prompt, keepHistory, progressListener)
@@ -138,13 +150,21 @@ class MnnRnModule(reactContext: ReactApplicationContext) :
 
     Thread {
       try {
+        val sid = sessionId.toLong()
+        val stopFlag = stopFlags.getOrPut(sid, { AtomicBoolean(false) })
+        stopFlag.set(false) // Reset stop flag at start
+        
         val historyList = convertMessagesToPairs(messages)
         val progressListener = ProgressListener { text ->
-          sendEvent("onLlmChunk", Arguments.createMap().apply {
-            putDouble("sessionId", sessionId)
-            putString("chunk", text)
-          })
-          false
+          if (stopFlag.get()) {
+            true // Stop generation
+          } else {
+            sendEvent("onLlmChunk", Arguments.createMap().apply {
+              putDouble("sessionId", sessionId)
+              putString("chunk", text)
+            })
+            false
+          }
         }
 
         val metricsMap = submitFullHistoryNative(nativePtr, historyList, progressListener)
@@ -253,6 +273,18 @@ class MnnRnModule(reactContext: ReactApplicationContext) :
     if (nativePtr != null) {
       val debugInfo = getDebugInfoNative(nativePtr)
       promise.resolve(debugInfo)
+    } else {
+      promise.reject("INVALID_SESSION", "Invalid session ID")
+    }
+  }
+
+  @ReactMethod
+  override fun stopGeneration(sessionId: Double, promise: Promise) {
+    val sid = sessionId.toLong()
+    val stopFlag = stopFlags[sid]
+    if (stopFlag != null) {
+      stopFlag.set(true)
+      promise.resolve(null)
     } else {
       promise.reject("INVALID_SESSION", "Invalid session ID")
     }

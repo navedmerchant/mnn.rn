@@ -287,6 +287,16 @@ export default function App() {
     }
   };
 
+  const handleStop = async () => {
+    try {
+      await session.stop();
+      setIsGenerating(false);
+    } catch (error: any) {
+      console.error('Stop error:', error);
+      setIsGenerating(false);
+    }
+  };
+
   const handleClearHistory = async () => {
     try {
       await session.clearHistory();
@@ -407,24 +417,29 @@ export default function App() {
                 editable={!isGenerating}
               />
               <View style={styles.buttonRow}>
-                <TouchableOpacity
-                  style={[styles.button, styles.buttonPrimary]}
-                  onPress={handleGenerate}
-                  disabled={isGenerating}
-                >
-                  {isGenerating ? (
-                    <ActivityIndicator color="#fff" />
-                  ) : (
-                    <Text style={styles.buttonText}>Generate</Text>
-                  )}
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.button, styles.buttonSecondary]}
-                  onPress={handleClearHistory}
-                  disabled={isGenerating}
-                >
-                  <Text style={styles.buttonText}>Clear History</Text>
-                </TouchableOpacity>
+                {!isGenerating ? (
+                  <>
+                    <TouchableOpacity
+                      style={[styles.button, styles.buttonPrimary]}
+                      onPress={handleGenerate}
+                    >
+                      <Text style={styles.buttonText}>Generate</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.button, styles.buttonSecondary]}
+                      onPress={handleClearHistory}
+                    >
+                      <Text style={styles.buttonText}>Clear History</Text>
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  <TouchableOpacity
+                    style={[styles.button, styles.buttonStop]}
+                    onPress={handleStop}
+                  >
+                    <Text style={styles.buttonText}>⏹ Stop Generation</Text>
+                  </TouchableOpacity>
+                )}
               </View>
             </View>
 
@@ -581,6 +596,10 @@ const styles = StyleSheet.create({
   buttonSecondary: {
     flex: 1,
     backgroundColor: '#666',
+  },
+  buttonStop: {
+    flex: 1,
+    backgroundColor: '#dc3545',
   },
   buttonText: {
     color: '#fff',

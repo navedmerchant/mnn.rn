@@ -49,6 +49,9 @@ export interface Spec extends TurboModule {
   // Information
   getSystemPrompt(sessionId: number): Promise<string>;
   getDebugInfo(sessionId: number): Promise<string>;
+  
+  // Generation control
+  stopGeneration(sessionId: number): Promise<void>;
 }
 
 export default TurboModuleRegistry.getEnforcing<Spec>('MnnRn');

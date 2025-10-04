@@ -55,6 +55,7 @@ export class MnnLlmSession {
   private chunkListener: EmitterSubscription | null = null;
   private completeListener: EmitterSubscription | null = null;
   private errorListener: EmitterSubscription | null = null;
+  private stopRequested: boolean = false;
 
   /**
    * Initialize the LLM session with model configuration
@@ -129,8 +130,10 @@ export class MnnLlmSession {
       this.chunkListener = DeviceEventEmitter.addListener(
         'onLlmChunk',
         (event: LlmChunkEvent) => {
-          if (event.sessionId === this.sessionId) {
+          if (event.sessionId === this.sessionId && !this.stopRequested) {
             onChunk(event.chunk);
+          } else if (this.stopRequested) {
+            this.removeAllListeners();
           }
         }
       );
@@ -140,8 +143,10 @@ export class MnnLlmSession {
       this.completeListener = DeviceEventEmitter.addListener(
         'onLlmComplete',
         (event: LlmCompleteEvent) => {
-          if (event.sessionId === this.sessionId) {
+          if (event.sessionId === this.sessionId && !this.stopRequested) {
             onComplete(event.metrics);
+            this.removeAllListeners();
+          } else if (this.stopRequested) {
             this.removeAllListeners();
           }
         }
@@ -198,6 +203,9 @@ export class MnnLlmSession {
     onError?: ErrorCallback
   ): Promise<LlmMetrics> {
     this.ensureInitialized();
+
+    // Reset stop flag when starting new generation
+    this.stopRequested = false;
 
     // Set up event listeners
     this.setupListeners(onChunk, onComplete, onError);
@@ -322,6 +330,22 @@ export class MnnLlmSession {
   async getDebugInfo(): Promise<string> {
     this.ensureInitialized();
     return await MnnRnNative.getDebugInfo(this.sessionId!);
+  }
+
+  /**
+   * Stop the current generation at the native level
+   */
+  async stop(): Promise<void> {
+    this.ensureInitialized();
+    this.stopRequested = true;
+    this.removeAllListeners();
+    
+    try {
+      await MnnRnNative.stopGeneration(this.sessionId!);
+    } catch (error) {
+      // Ignore errors if session is already stopped or doesn't exist
+      console.warn('Stop generation error:', error);
+    }
   }
 
   /**
