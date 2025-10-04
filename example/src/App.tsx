@@ -226,7 +226,7 @@ export default function App() {
     }
   };
 
-  const handleGenerate = () => {
+  const handleGenerate = async () => {
     if (!prompt.trim()) {
       Alert.alert('Error', 'Please enter a prompt');
       return;
@@ -237,42 +237,54 @@ export default function App() {
     setMetrics(null);
     setTokenCount(0);
     setTokensPerSecond(0);
-    setStartTime(Date.now());
+    const startTimeMs = Date.now();
+    setStartTime(startTimeMs);
 
     let chunkCount = 0;
 
-    session.submitPrompt(
-      prompt.trim(),
-      true,
-      (chunk: string) => {
-        // Update response with each chunk
-        setResponse((prev) => prev + chunk);
-        chunkCount++;
-        setTokenCount(chunkCount);
-        
-        // Calculate tokens per second
-        const elapsed = (Date.now() - Date.now()) / 1000;
-        if (elapsed > 0) {
-          setTokensPerSecond(chunkCount / elapsed);
+    try {
+      const finalMetrics = await session.submitPrompt(
+        prompt.trim(),
+        true,
+        (chunk: string) => {
+          // Update response with each chunk
+          setResponse((prev) => prev + chunk);
+          chunkCount++;
+          setTokenCount(chunkCount);
+          
+          // Calculate tokens per second
+          const elapsed = (Date.now() - startTimeMs) / 1000;
+          if (elapsed > 0) {
+            setTokensPerSecond(chunkCount / elapsed);
+          }
+        },
+        (metrics: LlmMetrics) => {
+          // Generation complete callback
+          setMetrics(metrics);
+          
+          // Calculate final tokens/sec
+          const totalTime = metrics.decodeTime / 1_000_000; // Convert microseconds to seconds
+          if (totalTime > 0) {
+            setTokensPerSecond(metrics.decodeLen / totalTime);
+          }
+        },
+        (error: string) => {
+          // Error handling
+          Alert.alert('Generation Error', error);
         }
-      },
-      (finalMetrics: LlmMetrics) => {
-        // Generation complete
-        setMetrics(finalMetrics);
-        setIsGenerating(false);
-        
-        // Calculate final tokens/sec
-        const totalTime = finalMetrics.decodeTime / 1_000_000; // Convert microseconds to seconds
-        if (totalTime > 0) {
-          setTokensPerSecond(finalMetrics.decodeLen / totalTime);
-        }
-      },
-      (error: string) => {
-        // Error handling
-        setIsGenerating(false);
-        Alert.alert('Generation Error', error);
+      );
+      
+      // Also update metrics from the promise result
+      setMetrics(finalMetrics);
+      const totalTime = finalMetrics.decodeTime / 1_000_000;
+      if (totalTime > 0) {
+        setTokensPerSecond(finalMetrics.decodeLen / totalTime);
       }
-    );
+    } catch (error: any) {
+      Alert.alert('Generation Error', error.message || String(error));
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   const handleClearHistory = async () => {

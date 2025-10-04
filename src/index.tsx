@@ -1,3 +1,5 @@
+import { DeviceEventEmitter } from 'react-native';
+import type { EmitterSubscription } from 'react-native';
 import MnnRnNative from './NativeMnnRn';
 
 // ===== Types =====
@@ -29,11 +31,30 @@ export type ChunkCallback = (chunk: string) => void;
 export type MetricsCallback = (metrics: LlmMetrics) => void;
 export type ErrorCallback = (error: string) => void;
 
+// ===== Event Types =====
+export interface LlmChunkEvent {
+  sessionId: number;
+  chunk: string;
+}
+
+export interface LlmCompleteEvent {
+  sessionId: number;
+  metrics: LlmMetrics;
+}
+
+export interface LlmErrorEvent {
+  sessionId: number;
+  error: string;
+}
+
 // ===== MnnLlmSession Class =====
 
 export class MnnLlmSession {
   private sessionId: number | null = null;
   private isInitialized: boolean = false;
+  private chunkListener: EmitterSubscription | null = null;
+  private completeListener: EmitterSubscription | null = null;
+  private errorListener: EmitterSubscription | null = null;
 
   /**
    * Initialize the LLM session with model configuration
@@ -88,9 +109,74 @@ export class MnnLlmSession {
    */
   async release(): Promise<void> {
     this.ensureInitialized();
+    this.removeAllListeners();
     await MnnRnNative.release(this.sessionId!);
     this.sessionId = null;
     this.isInitialized = false;
+  }
+
+  /**
+   * Set up event listeners for streaming responses
+   */
+  private setupListeners(
+    onChunk?: ChunkCallback,
+    onComplete?: MetricsCallback,
+    onError?: ErrorCallback
+  ): void {
+    this.removeAllListeners();
+
+    if (onChunk) {
+      this.chunkListener = DeviceEventEmitter.addListener(
+        'onLlmChunk',
+        (event: LlmChunkEvent) => {
+          if (event.sessionId === this.sessionId) {
+            onChunk(event.chunk);
+          }
+        }
+      );
+    }
+
+    if (onComplete) {
+      this.completeListener = DeviceEventEmitter.addListener(
+        'onLlmComplete',
+        (event: LlmCompleteEvent) => {
+          if (event.sessionId === this.sessionId) {
+            onComplete(event.metrics);
+            this.removeAllListeners();
+          }
+        }
+      );
+    }
+
+    if (onError) {
+      this.errorListener = DeviceEventEmitter.addListener(
+        'onLlmError',
+        (event: LlmErrorEvent) => {
+          if (event.sessionId === this.sessionId) {
+            onError(event.error);
+            this.removeAllListeners();
+          }
+        }
+      );
+    }
+  }
+
+  /**
+   * Remove all event listeners
+   */
+  private removeAllListeners(): void {
+    if (this.chunkListener) {
+      this.chunkListener.remove();
+      this.chunkListener = null;
+    }
+    if (this.completeListener) {
+      this.completeListener.remove();
+      this.completeListener = null;
+    }
+    if (this.errorListener) {
+      this.errorListener.remove();
+      this.errorListener = null;
+    }
   }
 
   /**
@@ -102,34 +188,30 @@ export class MnnLlmSession {
   }
 
   /**
-   * Submit prompt with callback-based streaming
+   * Submit prompt with event-based streaming
    */
-  submitPrompt(
+  async submitPrompt(
     prompt: string,
     keepHistory: boolean,
-    onChunk: ChunkCallback,
-    onComplete: MetricsCallback,
+    onChunk?: ChunkCallback,
+    onComplete?: MetricsCallback,
     onError?: ErrorCallback
-  ): void {
+  ): Promise<LlmMetrics> {
     this.ensureInitialized();
 
-    MnnRnNative.submitPromptStreaming(
+    // Set up event listeners
+    this.setupListeners(onChunk, onComplete, onError);
+
+    // Call native method (now returns a promise)
+    return (await MnnRnNative.submitPromptStreaming(
       this.sessionId!,
       prompt,
-      keepHistory,
-      onChunk,
-      (result: any) => {
-        if (typeof result === 'string' && result.startsWith('Error:')) {
-          onError?.(result);
-        } else {
-          onComplete(result as LlmMetrics);
-        }
-      }
-    );
+      keepHistory
+    )) as LlmMetrics;
   }
 
   /**
-   * Submit prompt with async/await (Promise-based)
+   * Submit prompt with async/await (same as submitPrompt but for API consistency)
    */
   async submitPromptAsync(
     prompt: string,
@@ -138,41 +220,38 @@ export class MnnLlmSession {
   ): Promise<LlmMetrics> {
     this.ensureInitialized();
 
+    // Set up event listeners
+    this.setupListeners(onChunk);
+
     return (await MnnRnNative.submitPromptAsync(
       this.sessionId!,
       prompt,
-      keepHistory,
-      onChunk || null
+      keepHistory
     )) as LlmMetrics;
   }
 
   /**
-   * Submit with full conversation history (callback-based)
+   * Submit with full conversation history (event-based)
    */
-  submitWithHistory(
+  async submitWithHistory(
     messages: LlmMessage[],
-    onChunk: ChunkCallback,
-    onComplete: MetricsCallback,
+    onChunk?: ChunkCallback,
+    onComplete?: MetricsCallback,
     onError?: ErrorCallback
-  ): void {
+  ): Promise<LlmMetrics> {
     this.ensureInitialized();
 
-    MnnRnNative.submitWithHistoryStreaming(
+    // Set up event listeners
+    this.setupListeners(onChunk, onComplete, onError);
+
+    return (await MnnRnNative.submitWithHistoryStreaming(
       this.sessionId!,
-      messages,
-      onChunk,
-      (result: any) => {
-        if (typeof result === 'string' && result.startsWith('Error:')) {
-          onError?.(result);
-        } else {
-          onComplete(result as LlmMetrics);
-        }
-      }
-    );
+      messages
+    )) as LlmMetrics;
   }
 
   /**
-   * Submit with history (Promise-based)
+   * Submit with history (same as submitWithHistory but for API consistency)
    */
   async submitWithHistoryAsync(
     messages: LlmMessage[],
@@ -180,10 +259,12 @@ export class MnnLlmSession {
   ): Promise<LlmMetrics> {
     this.ensureInitialized();
 
+    // Set up event listeners
+    this.setupListeners(onChunk);
+
     return (await MnnRnNative.submitWithHistoryAsync(
       this.sessionId!,
-      messages,
-      onChunk || null
+      messages
     )) as LlmMetrics;
   }
 

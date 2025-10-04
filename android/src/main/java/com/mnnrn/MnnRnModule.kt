@@ -3,6 +3,7 @@ package com.mnnrn
 import android.util.Pair
 import com.facebook.react.bridge.*
 import com.facebook.react.module.annotations.ReactModule
+import com.facebook.react.modules.core.DeviceEventManagerModule
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 
@@ -66,85 +67,72 @@ class MnnRnModule(reactContext: ReactApplicationContext) :
     }
   }
 
-  // ===== Text Generation (Callback-based) =====
+  // ===== Text Generation (Event-based streaming) =====
 
   @ReactMethod
   override fun submitPromptStreaming(
     sessionId: Double,
     prompt: String,
     keepHistory: Boolean,
-    onChunk: Callback,
-    onComplete: Callback
+    promise: Promise
   ) {
     val nativePtr = sessionMap[sessionId.toLong()]
     if (nativePtr == null) {
-      onComplete.invoke("Error: Invalid session ID")
+      promise.reject("INVALID_SESSION", "Invalid session ID")
       return
     }
 
     Thread {
       try {
-        // Create progress listener
+        // Create progress listener that emits events
         val progressListener = ProgressListener { text ->
-          onChunk.invoke(text)
+          sendEvent("onLlmChunk", Arguments.createMap().apply {
+            putDouble("sessionId", sessionId)
+            putString("chunk", text)
+          })
           false // Continue generation
         }
 
         val metricsMap = submitNative(nativePtr, prompt, keepHistory, progressListener)
-        onComplete.invoke(convertHashMapToWritableMap(metricsMap))
+        
+        // Emit completion event
+        sendEvent("onLlmComplete", Arguments.createMap().apply {
+          putDouble("sessionId", sessionId)
+          putMap("metrics", convertHashMapToWritableMap(metricsMap))
+        })
+        
+        promise.resolve(convertHashMapToWritableMap(metricsMap))
       } catch (e: Exception) {
-        onComplete.invoke("Error: ${e.message}")
+        sendEvent("onLlmError", Arguments.createMap().apply {
+          putDouble("sessionId", sessionId)
+          putString("error", e.message ?: "Unknown error")
+        })
+        promise.reject("GENERATION_ERROR", e.message, e)
       }
     }.start()
   }
-
-  // ===== Text Generation (Promise-based) =====
 
   @ReactMethod
   override fun submitPromptAsync(
     sessionId: Double,
     prompt: String,
     keepHistory: Boolean,
-    onChunk: Callback?,
     promise: Promise
   ) {
-    val nativePtr = sessionMap[sessionId.toLong()]
-    if (nativePtr == null) {
-      promise.reject("INVALID_SESSION", "Invalid session ID")
-      return
-    }
-
-    Thread {
-      try {
-        val progressListener = if (onChunk != null) {
-          ProgressListener { text ->
-            onChunk.invoke(text)
-            false
-          }
-        } else {
-          null
-        }
-
-        val metricsMap = submitNative(nativePtr, prompt, keepHistory, progressListener)
-        promise.resolve(convertHashMapToWritableMap(metricsMap))
-      } catch (e: Exception) {
-        promise.reject("GENERATION_ERROR", e.message, e)
-      }
-    }.start()
+    submitPromptStreaming(sessionId, prompt, keepHistory, promise)
   }
 
-  // ===== Submit with History (Callback-based) =====
+  // ===== Submit with History (Event-based streaming) =====
 
   @ReactMethod
   override fun submitWithHistoryStreaming(
     sessionId: Double,
     messages: ReadableArray,
-    onChunk: Callback,
-    onComplete: Callback
+    promise: Promise
   ) {
     val nativePtr = sessionMap[sessionId.toLong()]
     if (nativePtr == null) {
-      onComplete.invoke("Error: Invalid session ID")
+      promise.reject("INVALID_SESSION", "Invalid session ID")
       return
     }
 
@@ -152,51 +140,39 @@ class MnnRnModule(reactContext: ReactApplicationContext) :
       try {
         val historyList = convertMessagesToPairs(messages)
         val progressListener = ProgressListener { text ->
-          onChunk.invoke(text)
+          sendEvent("onLlmChunk", Arguments.createMap().apply {
+            putDouble("sessionId", sessionId)
+            putString("chunk", text)
+          })
           false
         }
 
         val metricsMap = submitFullHistoryNative(nativePtr, historyList, progressListener)
-        onComplete.invoke(convertHashMapToWritableMap(metricsMap))
+        
+        // Emit completion event
+        sendEvent("onLlmComplete", Arguments.createMap().apply {
+          putDouble("sessionId", sessionId)
+          putMap("metrics", convertHashMapToWritableMap(metricsMap))
+        })
+        
+        promise.resolve(convertHashMapToWritableMap(metricsMap))
       } catch (e: Exception) {
-        onComplete.invoke("Error: ${e.message}")
+        sendEvent("onLlmError", Arguments.createMap().apply {
+          putDouble("sessionId", sessionId)
+          putString("error", e.message ?: "Unknown error")
+        })
+        promise.reject("GENERATION_ERROR", e.message, e)
       }
     }.start()
   }
-
-  // ===== Submit with History (Promise-based) =====
 
   @ReactMethod
   override fun submitWithHistoryAsync(
     sessionId: Double,
     messages: ReadableArray,
-    onChunk: Callback?,
     promise: Promise
   ) {
-    val nativePtr = sessionMap[sessionId.toLong()]
-    if (nativePtr == null) {
-      promise.reject("INVALID_SESSION", "Invalid session ID")
-      return
-    }
-
-    Thread {
-      try {
-        val historyList = convertMessagesToPairs(messages)
-        val progressListener = if (onChunk != null) {
-          ProgressListener { text ->
-            onChunk.invoke(text)
-            false
-          }
-        } else {
-          null
-        }
-
-        val metricsMap = submitFullHistoryNative(nativePtr, historyList, progressListener)
-        promise.resolve(convertHashMapToWritableMap(metricsMap))
-      } catch (e: Exception) {
-        promise.reject("GENERATION_ERROR", e.message, e)
-      }
-    }.start()
+    submitWithHistoryStreaming(sessionId, messages, promise)
   }
 
   // ===== Configuration Methods =====
@@ -283,6 +259,12 @@ class MnnRnModule(reactContext: ReactApplicationContext) :
   }
 
   // ===== Helper Methods =====
+
+  private fun sendEvent(eventName: String, params: WritableMap) {
+    reactApplicationContext
+      .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+      .emit(eventName, params)
+  }
 
   private fun convertMessagesToPairs(messages: ReadableArray): ArrayList<Pair<String, String>> {
     val pairs = ArrayList<Pair<String, String>>()

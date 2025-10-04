@@ -13,34 +13,28 @@ export interface Spec extends TurboModule {
   release(sessionId: number): Promise<void>;
   reset(sessionId: number): Promise<void>;
   
-  // Text generation (callback-based)
+  // Text generation (event-based streaming)
   submitPromptStreaming(
     sessionId: number,
     prompt: string,
-    keepHistory: boolean,
-    onChunk: (chunk: string) => void,
-    onComplete: (result: Object) => void
-  ): void;
+    keepHistory: boolean
+  ): Promise<Object>;
   
   submitWithHistoryStreaming(
     sessionId: number,
-    messages: Array<{role: string; content: string}>,
-    onChunk: (chunk: string) => void,
-    onComplete: (result: Object) => void
-  ): void;
+    messages: Array<{role: string; content: string}>
+  ): Promise<Object>;
   
-  // Text generation (promise-based)
+  // Text generation (promise-based, same as streaming)
   submitPromptAsync(
     sessionId: number,
     prompt: string,
-    keepHistory: boolean,
-    onChunk: ((chunk: string) => void) | null
+    keepHistory: boolean
   ): Promise<Object>;
   
   submitWithHistoryAsync(
     sessionId: number,
-    messages: Array<{role: string; content: string}>,
-    onChunk: ((chunk: string) => void) | null
+    messages: Array<{role: string; content: string}>
   ): Promise<Object>;
   
   // Configuration
