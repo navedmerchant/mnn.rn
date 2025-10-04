@@ -10,11 +10,28 @@ import {
   Alert,
   SafeAreaView,
 } from 'react-native';
-import { createMnnLlmSession, type LlmMetrics } from 'mnn-rn';
+import { createMnnLlmSession, type LlmMetrics } from 'mnn.rn';
+import RNFS from 'react-native-fs';
+
+// HuggingFace file type
+interface HFFile {
+  path: string;
+  size: number;
+  type: 'file' | 'directory';
+}
+
+// Download progress type
+interface DownloadProgress {
+  totalFiles: number;
+  downloadedFiles: number;
+  currentFile: string;
+  bytesDownloaded: number;
+  totalBytes: number;
+}
 
 export default function App() {
   const [session] = useState(() => createMnnLlmSession());
-  const [modelPath, setModelPath] = useState('/sdcard/models/llama');
+  const [modelPath, setModelPath] = useState(`${RNFS.DocumentDirectoryPath}/models/Qwen3-1.7B-MNN/`);
   const [isInitialized, setIsInitialized] = useState(false);
   const [isInitializing, setIsInitializing] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -26,6 +43,11 @@ export default function App() {
   const [tokensPerSecond, setTokensPerSecond] = useState(0);
   const [startTime, setStartTime] = useState(0);
 
+  // Download states
+  const [repoUrl, setRepoUrl] = useState('https://huggingface.co/taobao-mnn/Qwen3-1.7B-MNN');
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState<DownloadProgress | null>(null);
+
   // Clean up on unmount
   useEffect(() => {
     return () => {
@@ -34,6 +56,152 @@ export default function App() {
       }
     };
   }, [isInitialized, session]);
+
+  // Parse HuggingFace URL to extract owner/repo
+  const parseHFUrl = (url: string): { owner: string; repo: string } | null => {
+    const match = url.match(/huggingface\.co\/([^\/]+)\/([^\/]+)/);
+    if (!match || !match[1] || !match[2]) return null;
+    return { owner: match[1], repo: match[2] };
+  };
+
+  // Fetch file tree from HuggingFace API
+  const fetchHFFileTree = async (owner: string, repo: string): Promise<HFFile[]> => {
+    const apiUrl = `https://huggingface.co/api/models/${owner}/${repo}/tree/main`;
+    const response = await fetch(apiUrl);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch file tree: ${response.statusText}`);
+    }
+    const files = await response.json();
+    return files
+      .filter((file: any) => file.type === 'file')
+      .map((file: any) => ({
+        path: file.path,
+        size: file.size || 0,
+        type: file.type,
+      }));
+  };
+
+  // Download a single file from HuggingFace
+  const downloadFile = async (
+    owner: string,
+    repo: string,
+    filePath: string,
+    destPath: string,
+    onProgress: (bytesWritten: number) => void
+  ): Promise<void> => {
+    const url = `https://huggingface.co/${owner}/${repo}/resolve/main/${filePath}`;
+    
+    const downloadResult = await RNFS.downloadFile({
+      fromUrl: url,
+      toFile: destPath,
+      progressDivider: 10,
+      begin: (res) => {
+        console.log('Download started:', filePath);
+      },
+      progress: (res) => {
+        onProgress(res.bytesWritten);
+      },
+    }).promise;
+
+    if (downloadResult.statusCode !== 200) {
+      throw new Error(`Failed to download ${filePath}: HTTP ${downloadResult.statusCode}`);
+    }
+  };
+
+  // Main download handler
+  const handleDownloadModel = async () => {
+    const parsed = parseHFUrl(repoUrl);
+    if (!parsed) {
+      Alert.alert('Error', 'Invalid HuggingFace URL. Format: https://huggingface.co/owner/repo');
+      return;
+    }
+
+    const { owner, repo } = parsed;
+    const downloadDir = `${RNFS.DocumentDirectoryPath}/models/${repo}`;
+
+    setIsDownloading(true);
+    setDownloadProgress({
+      totalFiles: 0,
+      downloadedFiles: 0,
+      currentFile: '',
+      bytesDownloaded: 0,
+      totalBytes: 0,
+    });
+
+    try {
+      // Create download directory
+      const dirExists = await RNFS.exists(downloadDir);
+      if (dirExists) {
+        await RNFS.unlink(downloadDir);
+      }
+      await RNFS.mkdir(downloadDir);
+
+      // Fetch file list
+      const files = await fetchHFFileTree(owner, repo);
+      const totalBytes = files.reduce((sum, f) => sum + f.size, 0);
+
+      setDownloadProgress({
+        totalFiles: files.length,
+        downloadedFiles: 0,
+        currentFile: '',
+        bytesDownloaded: 0,
+        totalBytes,
+      });
+
+      let totalDownloaded = 0;
+
+      // Download each file
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        if (!file) continue;
+        
+        const destPath = `${downloadDir}/${file.path}`;
+        
+        // Create subdirectories if needed
+        const destDir = destPath.substring(0, destPath.lastIndexOf('/'));
+        const destDirExists = await RNFS.exists(destDir);
+        if (!destDirExists) {
+          await RNFS.mkdir(destDir);
+        }
+
+
+        setDownloadProgress(prev => prev ? {
+          ...prev,
+          currentFile: file.path,
+          downloadedFiles: i,
+        } : null);
+
+        await downloadFile(owner, repo, file.path, destPath, (bytesWritten) => {
+          const currentFileBytes = bytesWritten;
+          const previousFilesBytes = files.slice(0, i).reduce((sum, f) => sum + f.size, 0);
+          totalDownloaded = previousFilesBytes + currentFileBytes;
+          
+          setDownloadProgress(prev => prev ? {
+            ...prev,
+            bytesDownloaded: totalDownloaded,
+          } : null);
+        });
+      }
+
+      setDownloadProgress(prev => prev ? {
+        ...prev,
+        downloadedFiles: files.length,
+        currentFile: 'Complete!',
+      } : null);
+
+      // Update model path
+      setModelPath(downloadDir + "/");
+      
+      Alert.alert(
+        'Success',
+        `Downloaded ${files.length} files to ${downloadDir}.\nYou can now initialize the model.`
+      );
+    } catch (error: any) {
+      Alert.alert('Download Error', error.message || String(error));
+    } finally {
+      setIsDownloading(false);
+    }
+  };
 
   const handleInitialize = async () => {
     if (!modelPath.trim()) {
@@ -132,6 +300,57 @@ export default function App() {
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         <Text style={styles.title}>MNN LLM React Native</Text>
+
+        {/* Model Download Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Download Model from HuggingFace</Text>
+          <TextInput
+            style={styles.input}
+            value={repoUrl}
+            onChangeText={setRepoUrl}
+            placeholder="HuggingFace repository URL"
+            editable={!isDownloading}
+          />
+          <TouchableOpacity
+            style={[
+              styles.button,
+              isDownloading && styles.buttonDisabled,
+            ]}
+            onPress={handleDownloadModel}
+            disabled={isDownloading}
+          >
+            {isDownloading ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.buttonText}>Download Model</Text>
+            )}
+          </TouchableOpacity>
+
+          {/* Download Progress */}
+          {downloadProgress && (
+            <View style={styles.progressSection}>
+              <Text style={styles.progressText}>
+                Progress: {downloadProgress.downloadedFiles} / {downloadProgress.totalFiles} files
+              </Text>
+              <Text style={styles.progressText}>
+                Current: {downloadProgress.currentFile}
+              </Text>
+              <Text style={styles.progressText}>
+                Downloaded: {(downloadProgress.bytesDownloaded / 1024 / 1024).toFixed(2)} MB / {(downloadProgress.totalBytes / 1024 / 1024).toFixed(2)} MB
+              </Text>
+              {downloadProgress.totalBytes > 0 && (
+                <View style={styles.progressBarContainer}>
+                  <View
+                    style={[
+                      styles.progressBar,
+                      { width: `${(downloadProgress.bytesDownloaded / downloadProgress.totalBytes) * 100}%` }
+                    ]}
+                  />
+                </View>
+              )}
+            </View>
+          )}
+        </View>
 
         {/* Model Configuration */}
         <View style={styles.section}>
@@ -429,5 +648,28 @@ const styles = StyleSheet.create({
   exampleText: {
     fontSize: 14,
     color: '#007AFF',
+  },
+  progressSection: {
+    marginTop: 12,
+    padding: 12,
+    backgroundColor: '#f9f9f9',
+    borderRadius: 8,
+  },
+  progressText: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 6,
+  },
+  progressBarContainer: {
+    height: 20,
+    backgroundColor: '#e0e0e0',
+    borderRadius: 10,
+    marginTop: 8,
+    overflow: 'hidden',
+  },
+  progressBar: {
+    height: '100%',
+    backgroundColor: '#007AFF',
+    borderRadius: 10,
   },
 });
