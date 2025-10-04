@@ -1,7 +1,7 @@
 {
   "name": "mnn.rn",
   "version": "0.1.1",
-  "description": "Ract native bindings for MNN framework from Alibaba",
+  "description": "React native bindings for MNN framework from Alibaba",
   "main": "./lib/module/index.js",
   "types": "./lib/typescript/src/index.d.ts",
   "exports": {
