@@ -124,16 +124,6 @@ class MnnRnModule(reactContext: ReactApplicationContext) :
     }.start()
   }
 
-  @ReactMethod
-  override fun submitPromptAsync(
-    sessionId: Double,
-    prompt: String,
-    keepHistory: Boolean,
-    promise: Promise
-  ) {
-    submitPromptStreaming(sessionId, prompt, keepHistory, promise)
-  }
-
   // ===== Submit with History (Event-based streaming) =====
 
   @ReactMethod
@@ -184,15 +174,6 @@ class MnnRnModule(reactContext: ReactApplicationContext) :
         promise.reject("GENERATION_ERROR", e.message, e)
       }
     }.start()
-  }
-
-  @ReactMethod
-  override fun submitWithHistoryAsync(
-    sessionId: Double,
-    messages: ReadableArray,
-    promise: Promise
-  ) {
-    submitWithHistoryStreaming(sessionId, messages, promise)
   }
 
   // ===== Configuration Methods =====

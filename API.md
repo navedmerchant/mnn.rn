@@ -19,9 +19,9 @@ Complete API reference for the MNN React Native library with streaming LLM infer
 ## Installation
 
 ```bash
-npm install mnn-rn
+npm install 
 # or
-yarn add mnn-rn
+yarn add 
 ```
 
 ### Android Setup
@@ -46,7 +46,7 @@ Place your MNN model files on the device:
 ## Quick Start
 
 ```typescript
-import { createMnnLlmSession } from 'mnn-rn';
+import { createMnnLlmSession } from '';
 
 // Create and initialize session
 const session = createMnnLlmSession();
@@ -164,45 +164,17 @@ console.log('Speed:', metrics.decodeLen / (metrics.decodeTime / 1000000), 'tok/s
 
 ---
 
-##### `submitPromptAsync(prompt, keepHistory?, onChunk?): Promise<LlmMetrics>`
-
-Submit a prompt and wait for completion (Promise-based).
-
-**Parameters:**
-- `prompt` (string): Input text
-- `keepHistory` (boolean, optional): Add to history (default: true)
-- `onChunk` (function, optional): Streaming callback
-  - Signature: `(chunk: string) => void`
-
-**Returns:** Promise<LlmMetrics> - Final generation metrics
-
-**Example:**
-```typescript
-let response = '';
-const metrics = await session.submitPromptAsync(
-  'What is TypeScript?',
-  true,
-  (chunk) => {
-    response += chunk;
-    console.log('Chunk:', chunk);
-  }
-);
-
-console.log('Full response:', response);
-console.log('Metrics:', metrics);
-```
-
----
-
-##### `submitWithHistory(messages, onChunk, onComplete, onError?): void`
+##### `submitWithHistory(messages, onChunk, onComplete, onError?): Promise<LlmMetrics>`
 
 Submit with full conversation history using callbacks.
 
 **Parameters:**
 - `messages` (LlmMessage[]): Conversation history
-- `onChunk` (function): Chunk callback
-- `onComplete` (function): Completion callback
+- `onChunk` (function, optional): Chunk callback
+- `onComplete` (function, optional): Completion callback
 - `onError` (function, optional): Error callback
+
+**Returns:** Promise<LlmMetrics> - Final generation metrics
 
 **Example:**
 ```typescript
@@ -212,25 +184,15 @@ const conversation = [
   { role: 'user', content: 'Tell me about React Native' }
 ];
 
-session.submitWithHistory(
+const metrics = await session.submitWithHistory(
   conversation,
   (chunk) => console.log(chunk),
   (metrics) => console.log('Done'),
   (error) => console.error(error)
 );
+
+console.log('Generated', metrics.decodeLen, 'tokens');
 ```
-
----
-
-##### `submitWithHistoryAsync(messages, onChunk?): Promise<LlmMetrics>`
-
-Submit with history (Promise-based).
-
-**Parameters:**
-- `messages` (LlmMessage[]): Conversation history
-- `onChunk` (function, optional): Streaming callback
-
-**Returns:** Promise<LlmMetrics>
 
 ---
 
@@ -452,7 +414,7 @@ Called when an error occurs.
 ### Basic Streaming with Await
 
 ```typescript
-import { createMnnLlmSession } from 'mnn-rn';
+import { createMnnLlmSession } from '';
 
 const session = createMnnLlmSession();
 
@@ -553,7 +515,7 @@ function ChatBot() {
 }
 ```
 
-### Async/Await Pattern (With submitPromptAsync)
+### Async/Await Pattern
 
 ```typescript
 async function generateText(prompt: string) {
@@ -565,7 +527,7 @@ async function generateText(prompt: string) {
     });
 
     let response = '';
-    const metrics = await session.submitPromptAsync(
+    const metrics = await session.submitPrompt(
       prompt,
       true,
       (chunk) => {
@@ -584,7 +546,7 @@ async function generateText(prompt: string) {
 }
 ```
 
-Note: [`submitPrompt()`](src/index.tsx:198) now also returns a Promise, so you can use it with await as well. Both methods support callbacks + Promise return value.
+Note: [`submitPrompt()`](src/index.tsx:254) returns a Promise with the final metrics while also supporting streaming callbacks.
 
 ### Conversation History
 
@@ -794,7 +756,7 @@ cd android
 ## Support
 
 For issues and questions:
-- GitHub Issues: [navedmerchant/mnn-rn](https://github.com/navedmerchant/mnn-rn/issues)
+- GitHub Issues: [navedmerchant/](https://github.com/navedmerchant//issues)
 - Documentation: See [ARCHITECTURE.md](./ARCHITECTURE_V2.md)
 
 ---

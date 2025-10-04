@@ -27,7 +27,7 @@ It is configured to use the local version of the library, so any changes you mak
 
 If you want to use Android Studio or XCode to edit the native code, you can open the `example/android` or `example/ios` directories respectively in those editors. To edit the Objective-C or Swift files, open `example/ios/MnnRnExample.xcworkspace` in XCode and find the source files at `Pods > Development Pods > mnn.rn`.
 
-To edit the Java or Kotlin files, open `example/android` in Android studio and find the source files at `mnn-rn` under `Android`.
+To edit the Java or Kotlin files, open `example/android` in Android studio and find the source files at `` under `Android`.
 
 You can use various commands from the root directory to work with the project.
 

@@ -2,7 +2,6 @@
 
 On-device LLM inference for React Native using MNN (Mobile Neural Network).
 
-[![npm version](https://badge.fury.io/js/mnn-rn.svg)](https://badge.fury.io/js/mnn-rn)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ## Features
@@ -18,15 +17,15 @@ On-device LLM inference for React Native using MNN (Mobile Neural Network).
 ## Installation
 
 ```bash
-npm install mnn-rn
+npm install mnn.rn
 # or
-yarn add mnn-rn
+yarn add mnn.rn
 ```
 
 ## Quick Start
 
 ```typescript
-import { createMnnLlmSession } from 'mnn-rn';
+import { createMnnLlmSession } from 'mnn.rn';
 
 const session = createMnnLlmSession();
 
@@ -85,13 +84,6 @@ const metrics = await session.submitPrompt(
   onChunk?: (chunk: string) => void,
   onComplete?: (metrics: LlmMetrics) => void,
   onError?: (error: string) => void
-): Promise<LlmMetrics>
-
-// Alternative: Promise-based with streaming
-const metrics = await session.submitPromptAsync(
-  prompt: string,
-  keepHistory: boolean,
-  onChunk?: (chunk: string) => void
 ): Promise<LlmMetrics>
 
 // Conversation with history

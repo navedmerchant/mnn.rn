@@ -25,18 +25,6 @@ export interface Spec extends TurboModule {
     messages: Array<{ role: string; content: string }>
   ): Promise<Object>;
 
-  // Text generation (promise-based, same as streaming)
-  submitPromptAsync(
-    sessionId: number,
-    prompt: string,
-    keepHistory: boolean
-  ): Promise<Object>;
-
-  submitWithHistoryAsync(
-    sessionId: number,
-    messages: Array<{ role: string; content: string }>
-  ): Promise<Object>;
-
   // Configuration
   updateMaxNewTokens(sessionId: number, maxTokens: number): Promise<void>;
   updateSystemPrompt(sessionId: number, systemPrompt: string): Promise<void>;

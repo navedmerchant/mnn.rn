@@ -13,9 +13,9 @@ Get started with on-device LLM inference in your React Native app using MNN.
 ## 🚀 Installation
 
 ```bash
-npm install mnn-rn
+npm install 
 # or
-yarn add mnn-rn
+yarn add 
 ```
 
 ## 📱 Setup
@@ -40,7 +40,7 @@ adb push /path/to/model /sdcard/models/your-model/
 ### 2. Basic Usage
 
 ```typescript
-import { createMnnLlmSession, type LlmMetrics } from 'mnn-rn';
+import { createMnnLlmSession, type LlmMetrics } from '';
 
 const session = createMnnLlmSession();
 
@@ -85,7 +85,7 @@ await session.release();
 Real-time streaming with callbacks AND await for final metrics (recommended):
 
 ```typescript
-import { createMnnLlmSession } from 'mnn-rn';
+import { createMnnLlmSession } from '';
 
 const session = createMnnLlmSession();
 await session.init({
@@ -126,7 +126,7 @@ async function generateText(prompt: string) {
     await session.init({ modelDir: '/sdcard/models/llama' });
     
     let response = '';
-    const metrics = await session.submitPromptAsync(
+    const metrics = await session.submitPrompt(
       prompt,
       true,
       (chunk) => {
@@ -153,7 +153,7 @@ Complete example with React hooks:
 ```typescript
 import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, Button, ActivityIndicator } from 'react-native';
-import { createMnnLlmSession, type LlmMetrics } from 'mnn-rn';
+import { createMnnLlmSession, type LlmMetrics } from '';
 
 function ChatBot() {
   const [session] = useState(() => createMnnLlmSession());
@@ -251,7 +251,7 @@ function ChatBot() {
 Multi-turn conversations:
 
 ```typescript
-import { type LlmMessage } from 'mnn-rn';
+import { type LlmMessage } from '';
 
 const conversation: LlmMessage[] = [
   { role: 'user', content: 'Hello!' },
@@ -259,18 +259,13 @@ const conversation: LlmMessage[] = [
   { role: 'user', content: 'Tell me about React Native' }
 ];
 
-// Using callbacks
-session.submitWithHistory(
+const metrics = await session.submitWithHistory(
   conversation,
   (chunk) => console.log(chunk),
-  (metrics) => console.log('Done:', metrics)
+  (metricsData) => console.log('Done:', metricsData)
 );
 
-// Using async/await
-const metrics = await session.submitWithHistoryAsync(
-  conversation,
-  (chunk) => console.log(chunk)
-);
+console.log('Generated', metrics.decodeLen, 'tokens');
 ```
 
 ## 🔧 Configuration

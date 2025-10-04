@@ -275,26 +275,6 @@ export class MnnLlmSession {
   }
 
   /**
-   * Submit prompt with async/await (same as submitPrompt but for API consistency)
-   */
-  async submitPromptAsync(
-    prompt: string,
-    keepHistory: boolean,
-    onChunk?: ChunkCallback
-  ): Promise<LlmMetrics> {
-    this.ensureInitialized();
-
-    // Set up event listeners
-    this.setupListeners(onChunk);
-
-    return (await MnnRnNative.submitPromptAsync(
-      this.sessionId!,
-      prompt,
-      keepHistory
-    )) as LlmMetrics;
-  }
-
-  /**
    * Submit with full conversation history (event-based)
    */
   async submitWithHistory(
@@ -309,24 +289,6 @@ export class MnnLlmSession {
     this.setupListeners(onChunk, onComplete, onError);
 
     return (await MnnRnNative.submitWithHistoryStreaming(
-      this.sessionId!,
-      messages
-    )) as LlmMetrics;
-  }
-
-  /**
-   * Submit with history (same as submitWithHistory but for API consistency)
-   */
-  async submitWithHistoryAsync(
-    messages: LlmMessage[],
-    onChunk?: ChunkCallback
-  ): Promise<LlmMetrics> {
-    this.ensureInitialized();
-
-    // Set up event listeners
-    this.setupListeners(onChunk);
-
-    return (await MnnRnNative.submitWithHistoryAsync(
       this.sessionId!,
       messages
     )) as LlmMetrics;
@@ -444,7 +406,7 @@ export class MnnLlmSession {
  *
  * @example
  * ```typescript
- * import { createMnnLlmSession } from 'mnn-rn';
+ * import { createMnnLlmSession } from '';
  *
  * function MyComponent() {
  *   const [session] = useState(() => createMnnLlmSession());
