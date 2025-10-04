@@ -1,6 +1,8 @@
 # MNN React Native
 
-On-device LLM inference for React Native using MNN (Mobile Neural Network).
+On-device LLM inference for React Native for Alibabas MNN.
+
+As of now this library only supports Android.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
@@ -152,17 +154,6 @@ Features demonstrated:
 └─────────────────────────┘
 ```
 
-See [ARCHITECTURE_FINAL.md](./ARCHITECTURE_FINAL.md) for detailed architecture.
-
-## Performance
-
-| Device | Model Size | Tokens/Second |
-|--------|-----------|---------------|
-| Snapdragon 888+ | 3B (4-bit) | 20-30 |
-| Snapdragon 888+ | 7B (4-bit) | 10-15 |
-| Snapdragon 8 Gen 2 | 3B (4-bit) | 30-40 |
-| Snapdragon 8 Gen 2 | 7B (4-bit) | 15-25 |
-
 ## Model Preparation
 
 1. **Convert your model to MNN format** using MNN tools
@@ -186,20 +177,6 @@ See [ARCHITECTURE_FINAL.md](./ARCHITECTURE_FINAL.md) for detailed architecture.
   - Gradle 8.0+
   - ARM64 device (arm64-v8a)
 - iOS: Coming soon
-
-## Build Configuration
-
-The library uses CMake to build and statically link the prebuilt MNN library:
-
-```cmake
-# android/src/main/cpp/CMakeLists.txt
-add_library(MNN SHARED IMPORTED)
-set_target_properties(MNN PROPERTIES
-  IMPORTED_LOCATION ${CMAKE_CURRENT_SOURCE_DIR}/../../../prebuilt/libs/libMNN.so
-)
-```
-
-## Troubleshooting
 
 ### Common Issues
 
@@ -249,4 +226,4 @@ MIT License - see [LICENSE](./LICENSE) file for details.
 
 ---
 
-**Built with ❤️ for on-device AI**
+**Built with ❤️ by Naved Merchant**
