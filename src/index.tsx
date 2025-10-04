@@ -339,7 +339,7 @@ export class MnnLlmSession {
     this.ensureInitialized();
     this.stopRequested = true;
     this.removeAllListeners();
-    
+
     try {
       await MnnRnNative.stopGeneration(this.sessionId!);
     } catch (error) {

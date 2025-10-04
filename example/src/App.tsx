@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import {
   StyleSheet,
   View,
@@ -31,22 +31,27 @@ interface DownloadProgress {
 
 export default function App() {
   const [session] = useState(() => createMnnLlmSession());
-  const [modelPath, setModelPath] = useState(`${RNFS.DocumentDirectoryPath}/models/Qwen3-1.7B-MNN/`);
+  const [modelPath, setModelPath] = useState(
+    `${RNFS.DocumentDirectoryPath}/models/Qwen3-1.7B-MNN/`
+  );
   const [isInitialized, setIsInitialized] = useState(false);
   const [isInitializing, setIsInitializing] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
-  
+
   const [prompt, setPrompt] = useState('');
   const [response, setResponse] = useState('');
   const [metrics, setMetrics] = useState<LlmMetrics | null>(null);
   const [tokenCount, setTokenCount] = useState(0);
   const [tokensPerSecond, setTokensPerSecond] = useState(0);
-  const [startTime, setStartTime] = useState(0);
+  const [_startTime, setStartTime] = useState(0);
 
   // Download states
-  const [repoUrl, setRepoUrl] = useState('https://huggingface.co/taobao-mnn/Qwen3-1.7B-MNN');
+  const [repoUrl, setRepoUrl] = useState(
+    'https://huggingface.co/taobao-mnn/Qwen3-1.7B-MNN'
+  );
   const [isDownloading, setIsDownloading] = useState(false);
-  const [downloadProgress, setDownloadProgress] = useState<DownloadProgress | null>(null);
+  const [downloadProgress, setDownloadProgress] =
+    useState<DownloadProgress | null>(null);
 
   // Clean up on unmount
   useEffect(() => {
@@ -59,19 +64,22 @@ export default function App() {
 
   // Parse HuggingFace URL to extract owner/repo
   const parseHFUrl = (url: string): { owner: string; repo: string } | null => {
-    const match = url.match(/huggingface\.co\/([^\/]+)\/([^\/]+)/);
+    const match = url.match(/huggingface\.co\/([^/]+)\/([^/]+)/);
     if (!match || !match[1] || !match[2]) return null;
     return { owner: match[1], repo: match[2] };
   };
 
   // Fetch file tree from HuggingFace API
-  const fetchHFFileTree = async (owner: string, repo: string): Promise<HFFile[]> => {
+  const fetchHFFileTree = async (
+    owner: string,
+    repo: string
+  ): Promise<HFFile[]> => {
     const apiUrl = `https://huggingface.co/api/models/${owner}/${repo}/tree/main`;
-    const response = await fetch(apiUrl);
-    if (!response.ok) {
-      throw new Error(`Failed to fetch file tree: ${response.statusText}`);
+    const apiResponse = await fetch(apiUrl);
+    if (!apiResponse.ok) {
+      throw new Error(`Failed to fetch file tree: ${apiResponse.statusText}`);
     }
-    const files = await response.json();
+    const files = await apiResponse.json();
     return files
       .filter((file: any) => file.type === 'file')
       .map((file: any) => ({
@@ -90,12 +98,12 @@ export default function App() {
     onProgress: (bytesWritten: number) => void
   ): Promise<void> => {
     const url = `https://huggingface.co/${owner}/${repo}/resolve/main/${filePath}`;
-    
+
     const downloadResult = await RNFS.downloadFile({
       fromUrl: url,
       toFile: destPath,
       progressDivider: 10,
-      begin: (res) => {
+      begin: (_res) => {
         console.log('Download started:', filePath);
       },
       progress: (res) => {
@@ -104,7 +112,9 @@ export default function App() {
     }).promise;
 
     if (downloadResult.statusCode !== 200) {
-      throw new Error(`Failed to download ${filePath}: HTTP ${downloadResult.statusCode}`);
+      throw new Error(
+        `Failed to download ${filePath}: HTTP ${downloadResult.statusCode}`
+      );
     }
   };
 
@@ -112,7 +122,10 @@ export default function App() {
   const handleDownloadModel = async () => {
     const parsed = parseHFUrl(repoUrl);
     if (!parsed) {
-      Alert.alert('Error', 'Invalid HuggingFace URL. Format: https://huggingface.co/owner/repo');
+      Alert.alert(
+        'Error',
+        'Invalid HuggingFace URL. Format: https://huggingface.co/owner/repo'
+      );
       return;
     }
 
@@ -154,9 +167,9 @@ export default function App() {
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
         if (!file) continue;
-        
+
         const destPath = `${downloadDir}/${file.path}`;
-        
+
         // Create subdirectories if needed
         const destDir = destPath.substring(0, destPath.lastIndexOf('/'));
         const destDirExists = await RNFS.exists(destDir);
@@ -164,34 +177,47 @@ export default function App() {
           await RNFS.mkdir(destDir);
         }
 
-
-        setDownloadProgress(prev => prev ? {
-          ...prev,
-          currentFile: file.path,
-          downloadedFiles: i,
-        } : null);
+        setDownloadProgress((prev) =>
+          prev
+            ? {
+                ...prev,
+                currentFile: file.path,
+                downloadedFiles: i,
+              }
+            : null
+        );
 
         await downloadFile(owner, repo, file.path, destPath, (bytesWritten) => {
           const currentFileBytes = bytesWritten;
-          const previousFilesBytes = files.slice(0, i).reduce((sum, f) => sum + f.size, 0);
+          const previousFilesBytes = files
+            .slice(0, i)
+            .reduce((sum, f) => sum + f.size, 0);
           totalDownloaded = previousFilesBytes + currentFileBytes;
-          
-          setDownloadProgress(prev => prev ? {
-            ...prev,
-            bytesDownloaded: totalDownloaded,
-          } : null);
+
+          setDownloadProgress((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  bytesDownloaded: totalDownloaded,
+                }
+              : null
+          );
         });
       }
 
-      setDownloadProgress(prev => prev ? {
-        ...prev,
-        downloadedFiles: files.length,
-        currentFile: 'Complete!',
-      } : null);
+      setDownloadProgress((prev) =>
+        prev
+          ? {
+              ...prev,
+              downloadedFiles: files.length,
+              currentFile: 'Complete!',
+            }
+          : null
+      );
 
       // Update model path
-      setModelPath(downloadDir + "/");
-      
+      setModelPath(downloadDir + '/');
+
       Alert.alert(
         'Success',
         `Downloaded ${files.length} files to ${downloadDir}.\nYou can now initialize the model.`
@@ -251,21 +277,21 @@ export default function App() {
           setResponse((prev) => prev + chunk);
           chunkCount++;
           setTokenCount(chunkCount);
-          
+
           // Calculate tokens per second
           const elapsed = (Date.now() - startTimeMs) / 1000;
           if (elapsed > 0) {
             setTokensPerSecond(chunkCount / elapsed);
           }
         },
-        (metrics: LlmMetrics) => {
+        (metricsData: LlmMetrics) => {
           // Generation complete callback
-          setMetrics(metrics);
-          
+          setMetrics(metricsData);
+
           // Calculate final tokens/sec
-          const totalTime = metrics.decodeTime / 1_000_000; // Convert microseconds to seconds
+          const totalTime = metricsData.decodeTime / 1_000_000; // Convert microseconds to seconds
           if (totalTime > 0) {
-            setTokensPerSecond(metrics.decodeLen / totalTime);
+            setTokensPerSecond(metricsData.decodeLen / totalTime);
           }
         },
         (error: string) => {
@@ -273,7 +299,7 @@ export default function App() {
           Alert.alert('Generation Error', error);
         }
       );
-      
+
       // Also update metrics from the promise result
       setMetrics(finalMetrics);
       const totalTime = finalMetrics.decodeTime / 1_000_000;
@@ -306,18 +332,6 @@ export default function App() {
     }
   };
 
-  const handleReset = async () => {
-    try {
-      await session.reset();
-      setResponse('');
-      setMetrics(null);
-      setTokenCount(0);
-      Alert.alert('Success', 'Session reset');
-    } catch (error: any) {
-      Alert.alert('Error', error.message || String(error));
-    }
-  };
-
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
@@ -325,7 +339,9 @@ export default function App() {
 
         {/* Model Download Section */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Download Model from HuggingFace</Text>
+          <Text style={styles.sectionTitle}>
+            Download Model from HuggingFace
+          </Text>
           <TextInput
             style={styles.input}
             value={repoUrl}
@@ -334,10 +350,7 @@ export default function App() {
             editable={!isDownloading}
           />
           <TouchableOpacity
-            style={[
-              styles.button,
-              isDownloading && styles.buttonDisabled,
-            ]}
+            style={[styles.button, isDownloading && styles.buttonDisabled]}
             onPress={handleDownloadModel}
             disabled={isDownloading}
           >
@@ -352,20 +365,25 @@ export default function App() {
           {downloadProgress && (
             <View style={styles.progressSection}>
               <Text style={styles.progressText}>
-                Progress: {downloadProgress.downloadedFiles} / {downloadProgress.totalFiles} files
+                Progress: {downloadProgress.downloadedFiles} /{' '}
+                {downloadProgress.totalFiles} files
               </Text>
               <Text style={styles.progressText}>
                 Current: {downloadProgress.currentFile}
               </Text>
               <Text style={styles.progressText}>
-                Downloaded: {(downloadProgress.bytesDownloaded / 1024 / 1024).toFixed(2)} MB / {(downloadProgress.totalBytes / 1024 / 1024).toFixed(2)} MB
+                Downloaded:{' '}
+                {(downloadProgress.bytesDownloaded / 1024 / 1024).toFixed(2)} MB
+                / {(downloadProgress.totalBytes / 1024 / 1024).toFixed(2)} MB
               </Text>
               {downloadProgress.totalBytes > 0 && (
                 <View style={styles.progressBarContainer}>
                   <View
                     style={[
                       styles.progressBar,
-                      { width: `${(downloadProgress.bytesDownloaded / downloadProgress.totalBytes) * 100}%` }
+                      {
+                        width: `${(downloadProgress.bytesDownloaded / downloadProgress.totalBytes) * 100}%`,
+                      },
                     ]}
                   />
                 </View>
@@ -454,7 +472,7 @@ export default function App() {
                   </View>
                 )}
               </View>
-              
+
               <View style={styles.responseBox}>
                 <ScrollView style={styles.responseScroll}>
                   <Text style={styles.responseText}>
@@ -493,7 +511,11 @@ export default function App() {
                   </Text>
                   <Text style={styles.metricsDetail}>
                     Total time:{' '}
-                    {((metrics.prefillTime + metrics.decodeTime) / 1_000_000).toFixed(2)} s
+                    {(
+                      (metrics.prefillTime + metrics.decodeTime) /
+                      1_000_000
+                    ).toFixed(2)}{' '}
+                    s
                   </Text>
                 </View>
               )}
@@ -516,7 +538,9 @@ export default function App() {
                   setPrompt('Explain quantum computing in simple terms')
                 }
               >
-                <Text style={styles.exampleText}>Explain quantum computing</Text>
+                <Text style={styles.exampleText}>
+                  Explain quantum computing
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={styles.exampleButton}
