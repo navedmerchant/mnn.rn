@@ -13,7 +13,7 @@ export const DEFAULT_CONFIG: ModelConfig = {
   quantQkv: 0,
   samplerType: 'mixed',
   mixedSamplers: ['topK', 'tfs', 'typical', 'topP', 'minP', 'temperature'],
-  temperature: 1.0,
+  temperature: 0.6,
   topK: 40,
   topP: 0.9,
   minP: 0.1,
