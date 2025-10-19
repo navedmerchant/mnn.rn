@@ -1,97 +1,243 @@
-This is a new [**React Native**](https://reactnative.dev) project, bootstrapped using [`@react-native-community/cli`](https://github.com/react-native-community/cli).
+# MNN LLM React Native Example App
 
-# Getting Started
+A comprehensive example application demonstrating the MNN LLM React Native library with a full-featured chat interface, model configuration, and download capabilities.
 
-> **Note**: Make sure you have completed the [Set Up Your Environment](https://reactnative.dev/docs/set-up-your-environment) guide before proceeding.
+## Features
 
-## Step 1: Start Metro
+### 🎯 Core Features
 
-First, you will need to run **Metro**, the JavaScript build tool for React Native.
+1. **Download Screen**
+   - Download models directly from HuggingFace
+   - Progress tracking with visual progress bar
+   - Support for skipping download if model already exists
+   - Default model: Qwen3-1.7B-MNN
 
-To start the Metro dev server, run the following command from the root of your React Native project:
+2. **Chat Interface**
+   - Real-time streaming responses
+   - In-memory chat history
+   - Message bubbles with timestamps
+   - Token generation metrics (tokens/sec, latency)
+   - Stop generation mid-stream
+   - Clear chat history
+   - Reset session functionality
 
-```sh
-# Using npm
-npm start
+3. **Configuration Screen**
+   - Comprehensive model configuration options
+   - Live configuration editing
+   - Reset to defaults
+   - Apply and reinitialize with new settings
 
-# OR using Yarn
+### ⚙️ Configuration Options
+
+#### Hardware Configuration
+- **Backend Type**: CPU, OpenCL (Android GPU), Metal (iOS GPU)
+- **Thread Number**: Number of threads for inference
+- **Precision**: Low (FP16), Normal, High
+- **Memory**: Memory strategy (Low/Normal/High)
+- **Memory Mapping**: Use mmap for weights and KV cache
+
+#### Inference Configuration
+- **Max New Tokens**: Maximum tokens to generate
+- **Reuse KV Cache**: Enable for multi-turn dialogues
+- **Quantize QKV**: Various quantization options (0-4)
+
+#### Sampler Configuration
+- **Sampler Type**: Greedy, Temperature, Top-K, Top-P, Min-P, TFS, Typical, Penalty, Mixed
+- **Temperature**: Control randomness (0.1-2.0)
+- **Top-K**: Number of top tokens to sample
+- **Top-P**: Nucleus sampling threshold
+- **Min-P**: Minimum probability threshold
+- **Penalty**: Repetition penalty factor
+- **N-Gram**: Max n-gram for penalty
+- **Mixed Samplers**: Apply multiple samplers in sequence
+
+#### Advanced Features
+- **Thinking Mode**: Enable chain-of-thought reasoning (for supported models)
+- **System Prompt**: Customize system-level instructions
+- **Assistant Prompt Template**: Customize response format
+
+## Getting Started
+
+### Prerequisites
+
+- Node.js >= 20
+- React Native development environment set up
+- For Android: Android Studio with SDK
+- For iOS: Xcode with CocoaPods
+
+### Installation
+
+```bash
+# Install dependencies
+yarn install
+
+# iOS only - install pods
+cd ios && pod install && cd ..
+```
+
+### Running the App
+
+```bash
+# Start Metro bundler
 yarn start
-```
 
-## Step 2: Build and run your app
-
-With Metro running, open a new terminal window/pane from the root of your React Native project, and use one of the following commands to build and run your Android or iOS app:
-
-### Android
-
-```sh
-# Using npm
-npm run android
-
-# OR using Yarn
+# Run on Android
 yarn android
-```
 
-### iOS
-
-For iOS, remember to install CocoaPods dependencies (this only needs to be run on first clone or after updating native deps).
-
-The first time you create a new project, run the Ruby bundler to install CocoaPods itself:
-
-```sh
-bundle install
-```
-
-Then, and every time you update your native dependencies, run:
-
-```sh
-bundle exec pod install
-```
-
-For more information, please visit [CocoaPods Getting Started guide](https://guides.cocoapods.org/using/getting-started.html).
-
-```sh
-# Using npm
-npm run ios
-
-# OR using Yarn
+# Run on iOS
 yarn ios
 ```
 
-If everything is set up correctly, you should see your new app running in the Android Emulator, iOS Simulator, or your connected device.
+## Usage Guide
 
-This is one way to run your app — you can also build it directly from Android Studio or Xcode.
+### First Launch
 
-## Step 3: Modify your app
+1. **Download Model**
+   - On first launch, you'll see the download screen
+   - Enter a HuggingFace repository URL (or use the default)
+   - Tap "Download Model" to download from HuggingFace
+   - Or tap "Skip" if you already have a model downloaded
 
-Now that you have successfully run the app, let's make changes!
+2. **Model Initialization**
+   - After download, the model will automatically initialize
+   - Wait for initialization to complete
+   - You'll be redirected to the chat screen when ready
 
-Open `App.tsx` in your text editor of choice and make some changes. When you save, your app will automatically update and reflect these changes — this is powered by [Fast Refresh](https://reactnative.dev/docs/fast-refresh).
+### Using the Chat Screen
 
-When you want to forcefully reload, for example to reset the state of your app, you can perform a full reload:
+1. **Send Messages**
+   - Type your message in the input field
+   - Tap the send button (➤) to send
+   - Watch the response stream in real-time
 
-- **Android**: Press the <kbd>R</kbd> key twice or select **"Reload"** from the **Dev Menu**, accessed via <kbd>Ctrl</kbd> + <kbd>M</kbd> (Windows/Linux) or <kbd>Cmd ⌘</kbd> + <kbd>M</kbd> (macOS).
-- **iOS**: Press <kbd>R</kbd> in iOS Simulator.
+2. **View Metrics**
+   - See tokens/second during generation
+   - View detailed metrics after completion (prefill time, decode time)
 
-## Congratulations! :tada:
+3. **Manage Chat**
+   - Tap "Clear" to clear chat history
+   - Tap "Reset" to reinitialize the session
+   - Tap "⏹" to stop generation mid-stream
 
-You've successfully run and modified your React Native App. :partying_face:
+### Configuring the Model
 
-### Now what?
+1. **Navigate to Config**
+   - Tap the "Config" tab in the bottom navigation
 
-- If you want to add this new React Native code to an existing application, check out the [Integration guide](https://reactnative.dev/docs/integration-with-existing-apps).
-- If you're curious to learn more about React Native, check out the [docs](https://reactnative.dev/docs/getting-started).
+2. **Adjust Settings**
+   - Modify any configuration option
+   - See descriptions for each setting
+   - Tap "Save" to save without applying
 
-# Troubleshooting
+3. **Apply Configuration**
+   - Tap "Apply & Reinitialize" to apply changes
+   - This will reinitialize the model and clear chat history
 
-If you're having issues getting the above steps to work, see the [Troubleshooting](https://reactnative.dev/docs/troubleshooting) page.
+4. **Reset to Defaults**
+   - Tap "Reset" in the header to restore default values
 
-# Learn More
+### Enabling Thinking Mode
 
-To learn more about React Native, take a look at the following resources:
+For models that support chain-of-thought reasoning:
 
-- [React Native Website](https://reactnative.dev) - learn more about React Native.
-- [Getting Started](https://reactnative.dev/docs/environment-setup) - an **overview** of React Native and how setup your environment.
-- [Learn the Basics](https://reactnative.dev/docs/getting-started) - a **guided tour** of the React Native **basics**.
-- [Blog](https://reactnative.dev/blog) - read the latest official React Native **Blog** posts.
-- [`@facebook/react-native`](https://github.com/facebook/react-native) - the Open Source; GitHub **repository** for React Native.
+1. Go to Config screen
+2. Scroll to "Advanced Features"
+3. Enable "Enable Thinking Mode"
+4. Apply & Reinitialize
+
+## Supported Models
+
+This example works best with MNN-converted models from HuggingFace:
+
+- **Qwen Series**: Qwen3-1.7B, Qwen2.5-0.5B, Qwen2.5-1.5B, Qwen2.5-3B (Instruct variants)
+- **Other MNN Models**: Any model exported using the MNN LLM export tools
+
+### Model Format
+
+Models should be in MNN format with the following structure:
+```
+model_directory/
+├── config.json
+├── embeddings_bf16.bin
+├── llm.mnn
+├── llm.mnn.weight
+├── llm_config.json
+└── tokenizer.txt
+```
+
+## Tips & Best Practices
+
+### Performance Optimization
+
+1. **Use OpenCL/Metal**: For mobile GPUs, use OpenCL (Android) or Metal (iOS)
+   - Set thread_num to 68 for OpenCL
+   - Significantly faster than CPU on supported devices
+
+2. **Enable Memory Mapping**: For devices with limited RAM
+   - Enable "Use Memory Mapping" in config
+   - Prevents out-of-memory errors on large models
+
+3. **Adjust Max Tokens**: Set based on your needs
+   - Lower values = faster responses
+   - Higher values = longer conversations
+
+### Sampler Configuration
+
+- **For deterministic output**: Use "Greedy" sampler
+- **For creative output**: Use "Temperature" or "Mixed" with higher temperature (1.5-2.0)
+- **To avoid repetition**: Use "Penalty" sampler with penalty > 1.0
+- **Balanced approach**: Use "Mixed" with default settings
+
+### Thinking Mode
+
+- Only works with models specifically trained for chain-of-thought
+- Produces more detailed, step-by-step reasoning
+- May be slower and use more tokens
+- Best for complex problem-solving tasks
+
+## Project Structure
+
+```
+example/
+├── src/
+│   ├── screens/
+│   │   ├── DownloadScreen.tsx   # Model download UI
+│   │   ├── ChatScreen.tsx        # Chat interface
+│   │   └── ConfigScreen.tsx      # Configuration UI
+│   ├── types/
+│   │   └── index.ts              # TypeScript type definitions
+│   ├── utils/
+│   │   └── configUtils.ts        # Configuration helpers
+│   └── App.tsx                   # Main app with navigation
+├── android/                      # Android native code
+├── ios/                         # iOS native code
+└── package.json
+```
+
+## Troubleshooting
+
+### Model Download Issues
+
+- **Check internet connection**
+- **Verify HuggingFace URL format**: `https://huggingface.co/owner/repo`
+- **Ensure enough storage space**: Models can be 500MB - 2GB+
+
+### Initialization Errors
+
+- **Check model path**: Ensure all required files are present
+- **Verify config.json**: Should be in the model directory
+- **Try different backend**: Switch between CPU/OpenCL/Metal
+
+### Generation Issues
+
+- **Slow generation**: Try reducing max_new_tokens or using GPU backend
+- **Out of memory**: Enable memory mapping options
+- **Repetitive output**: Increase penalty factor in sampler config
+
+## API Reference
+
+See the main [API documentation](../../API.md) for detailed API usage.
+
+## License
+
+Same as parent project - see LICENSE file.

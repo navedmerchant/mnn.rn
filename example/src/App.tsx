@@ -2,58 +2,59 @@ import { useState, useEffect } from 'react';
 import {
   StyleSheet,
   View,
-  Text,
-  TextInput,
   TouchableOpacity,
-  ScrollView,
-  ActivityIndicator,
+  Text,
   Alert,
   SafeAreaView,
+  StatusBar,
+  ActivityIndicator,
+  Platform,
 } from 'react-native';
-import { createMnnLlmSession, type LlmMetrics } from 'mnn.rn';
+import { createMnnLlmSession } from 'mnn.rn';
 import RNFS from 'react-native-fs';
-
-// HuggingFace file type
-interface HFFile {
-  path: string;
-  size: number;
-  type: 'file' | 'directory';
-}
-
-// Download progress type
-interface DownloadProgress {
-  totalFiles: number;
-  downloadedFiles: number;
-  currentFile: string;
-  bytesDownloaded: number;
-  totalBytes: number;
-}
+import type { Screen, ChatMessage, ModelConfig } from './types';
+import { DEFAULT_CONFIG, buildMnnConfig } from './utils/configUtils';
+import DownloadScreen from './screens/DownloadScreen';
+import ChatScreen from './screens/ChatScreen';
+import ConfigScreen from './screens/ConfigScreen';
 
 export default function App() {
+  // Session and initialization state
   const [session] = useState(() => createMnnLlmSession());
-  const [modelPath, setModelPath] = useState(
-    `${RNFS.DocumentDirectoryPath}/models/Qwen3-1.7B-MNN/`
-  );
   const [isInitialized, setIsInitialized] = useState(false);
   const [isInitializing, setIsInitializing] = useState(false);
-  const [isGenerating, setIsGenerating] = useState(false);
+  const [modelPath, setModelPath] = useState<string>('');
 
-  const [prompt, setPrompt] = useState('');
-  const [response, setResponse] = useState('');
-  const [metrics, setMetrics] = useState<LlmMetrics | null>(null);
-  const [tokenCount, setTokenCount] = useState(0);
-  const [tokensPerSecond, setTokensPerSecond] = useState(0);
-  const [_startTime, setStartTime] = useState(0);
+  // Navigation state
+  const [currentScreen, setCurrentScreen] = useState<Screen>('download');
 
-  // Download states
-  const [repoUrl, setRepoUrl] = useState(
-    'https://huggingface.co/taobao-mnn/Qwen3-1.7B-MNN'
-  );
-  const [isDownloading, setIsDownloading] = useState(false);
-  const [downloadProgress, setDownloadProgress] =
-    useState<DownloadProgress | null>(null);
+  // Chat state
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
 
-  // Clean up on unmount
+  // Configuration state
+  const [config, setConfig] = useState<ModelConfig>(DEFAULT_CONFIG);
+
+  // Check if model is already downloaded on mount and auto-initialize
+  useEffect(() => {
+    const checkExistingModel = async () => {
+      const defaultPath = `${RNFS.DocumentDirectoryPath}/models/Qwen3-1.7B-MNN/`;
+      const exists = await RNFS.exists(defaultPath);
+
+      if (exists) {
+        // Check if config.json exists in the model directory
+        const configExists = await RNFS.exists(`${defaultPath}config.json`);
+        if (configExists) {
+          setModelPath(defaultPath);
+          // Automatically initialize the model if it exists
+          handleInitializeModel(defaultPath);
+        }
+      }
+    };
+    checkExistingModel();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Clean up session on unmount
   useEffect(() => {
     return () => {
       if (isInitialized) {
@@ -62,498 +63,184 @@ export default function App() {
     };
   }, [isInitialized, session]);
 
-  // Parse HuggingFace URL to extract owner/repo
-  const parseHFUrl = (url: string): { owner: string; repo: string } | null => {
-    const match = url.match(/huggingface\.co\/([^/]+)\/([^/]+)/);
-    if (!match || !match[1] || !match[2]) return null;
-    return { owner: match[1], repo: match[2] };
+  const handleDownloadComplete = (path: string) => {
+    setModelPath(path);
+    // Automatically initialize after download
+    handleInitializeModel(path);
   };
 
-  // Fetch file tree from HuggingFace API
-  const fetchHFFileTree = async (
-    owner: string,
-    repo: string
-  ): Promise<HFFile[]> => {
-    const apiUrl = `https://huggingface.co/api/models/${owner}/${repo}/tree/main`;
-    const apiResponse = await fetch(apiUrl);
-    if (!apiResponse.ok) {
-      throw new Error(`Failed to fetch file tree: ${apiResponse.statusText}`);
-    }
-    const files = await apiResponse.json();
-    return files
-      .filter((file: any) => file.type === 'file')
-      .map((file: any) => ({
-        path: file.path,
-        size: file.size || 0,
-        type: file.type,
-      }));
-  };
+  const handleInitializeModel = async (path?: string) => {
+    const targetPath = path || modelPath;
 
-  // Download a single file from HuggingFace
-  const downloadFile = async (
-    owner: string,
-    repo: string,
-    filePath: string,
-    destPath: string,
-    onProgress: (bytesWritten: number) => void
-  ): Promise<void> => {
-    const url = `https://huggingface.co/${owner}/${repo}/resolve/main/${filePath}`;
-
-    const downloadResult = await RNFS.downloadFile({
-      fromUrl: url,
-      toFile: destPath,
-      progressDivider: 10,
-      begin: (_res) => {
-        console.log('Download started:', filePath);
-      },
-      progress: (res) => {
-        onProgress(res.bytesWritten);
-      },
-    }).promise;
-
-    if (downloadResult.statusCode !== 200) {
-      throw new Error(
-        `Failed to download ${filePath}: HTTP ${downloadResult.statusCode}`
-      );
-    }
-  };
-
-  // Main download handler
-  const handleDownloadModel = async () => {
-    const parsed = parseHFUrl(repoUrl);
-    if (!parsed) {
-      Alert.alert(
-        'Error',
-        'Invalid HuggingFace URL. Format: https://huggingface.co/owner/repo'
-      );
-      return;
-    }
-
-    const { owner, repo } = parsed;
-    const downloadDir = `${RNFS.DocumentDirectoryPath}/models/${repo}`;
-
-    setIsDownloading(true);
-    setDownloadProgress({
-      totalFiles: 0,
-      downloadedFiles: 0,
-      currentFile: '',
-      bytesDownloaded: 0,
-      totalBytes: 0,
-    });
-
-    try {
-      // Create download directory
-      const dirExists = await RNFS.exists(downloadDir);
-      if (dirExists) {
-        await RNFS.unlink(downloadDir);
-      }
-      await RNFS.mkdir(downloadDir);
-
-      // Fetch file list
-      const files = await fetchHFFileTree(owner, repo);
-      const totalBytes = files.reduce((sum, f) => sum + f.size, 0);
-
-      setDownloadProgress({
-        totalFiles: files.length,
-        downloadedFiles: 0,
-        currentFile: '',
-        bytesDownloaded: 0,
-        totalBytes,
-      });
-
-      let totalDownloaded = 0;
-
-      // Download each file
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        if (!file) continue;
-
-        const destPath = `${downloadDir}/${file.path}`;
-
-        // Create subdirectories if needed
-        const destDir = destPath.substring(0, destPath.lastIndexOf('/'));
-        const destDirExists = await RNFS.exists(destDir);
-        if (!destDirExists) {
-          await RNFS.mkdir(destDir);
-        }
-
-        setDownloadProgress((prev) =>
-          prev
-            ? {
-                ...prev,
-                currentFile: file.path,
-                downloadedFiles: i,
-              }
-            : null
-        );
-
-        await downloadFile(owner, repo, file.path, destPath, (bytesWritten) => {
-          const currentFileBytes = bytesWritten;
-          const previousFilesBytes = files
-            .slice(0, i)
-            .reduce((sum, f) => sum + f.size, 0);
-          totalDownloaded = previousFilesBytes + currentFileBytes;
-
-          setDownloadProgress((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  bytesDownloaded: totalDownloaded,
-                }
-              : null
-          );
-        });
-      }
-
-      setDownloadProgress((prev) =>
-        prev
-          ? {
-              ...prev,
-              downloadedFiles: files.length,
-              currentFile: 'Complete!',
-            }
-          : null
-      );
-
-      // Update model path
-      setModelPath(downloadDir + '/');
-
-      Alert.alert(
-        'Success',
-        `Downloaded ${files.length} files to ${downloadDir}.\nYou can now initialize the model.`
-      );
-    } catch (error: any) {
-      Alert.alert('Download Error', error.message || String(error));
-    } finally {
-      setIsDownloading(false);
-    }
-  };
-
-  const handleInitialize = async () => {
-    if (!modelPath.trim()) {
-      Alert.alert('Error', 'Please enter a valid model path');
+    if (!targetPath) {
+      Alert.alert('Error', 'No model path specified');
       return;
     }
 
     setIsInitializing(true);
+
     try {
+      // Build the merged config JSON
+      const mergedConfigJson = buildMnnConfig(config);
+
       await session.init({
-        modelDir: modelPath.trim(),
-        maxNewTokens: 2048,
-        systemPrompt: 'You are a helpful AI assistant.',
+        modelDir: targetPath,
+        maxNewTokens: config.maxNewTokens || 2048,
+        systemPrompt: config.systemPrompt || 'You are a helpful AI assistant.',
         keepHistory: true,
+        mergedConfig: mergedConfigJson,
       });
+
       setIsInitialized(true);
-      Alert.alert('Success', 'Model loaded successfully!');
+      setCurrentScreen('chat');
+      Alert.alert('Success', 'Model initialized successfully!');
     } catch (error: any) {
       Alert.alert('Initialization Error', error.message || String(error));
+      setCurrentScreen('download');
     } finally {
       setIsInitializing(false);
     }
   };
 
-  const handleGenerate = async () => {
-    if (!prompt.trim()) {
-      Alert.alert('Error', 'Please enter a prompt');
+  const handleResetSession = async () => {
+    if (!isInitialized) return;
+
+    setIsInitializing(true);
+
+    try {
+      // Clear messages
+      setMessages([]);
+
+      // Release current session
+      await session.release();
+      setIsInitialized(false);
+
+      // Wait a bit for cleanup
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      // Reinitialize with current config
+      await handleInitializeModel();
+    } catch (error: any) {
+      Alert.alert('Reset Error', error.message || String(error));
+      setIsInitializing(false);
+    }
+  };
+
+  const handleApplyConfig = async () => {
+    if (!isInitialized) {
+      Alert.alert(
+        'Info',
+        'Configuration will be applied when you initialize the model'
+      );
       return;
     }
 
-    setIsGenerating(true);
-    setResponse('');
-    setMetrics(null);
-    setTokenCount(0);
-    setTokensPerSecond(0);
-    const startTimeMs = Date.now();
-    setStartTime(startTimeMs);
-
-    let chunkCount = 0;
-
-    try {
-      const finalMetrics = await session.submitPrompt(
-        prompt.trim(),
-        true,
-        (chunk: string) => {
-          // Update response with each chunk
-          setResponse((prev) => prev + chunk);
-          chunkCount++;
-          setTokenCount(chunkCount);
-
-          // Calculate tokens per second
-          const elapsed = (Date.now() - startTimeMs) / 1000;
-          if (elapsed > 0) {
-            setTokensPerSecond(chunkCount / elapsed);
-          }
+    Alert.alert(
+      'Apply Configuration',
+      'This will reinitialize the model with the new configuration and clear chat history. Continue?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Apply',
+          onPress: handleResetSession,
         },
-        (metricsData: LlmMetrics) => {
-          // Generation complete callback
-          setMetrics(metricsData);
+      ]
+    );
+  };
 
-          // Calculate final tokens/sec
-          const totalTime = metricsData.decodeTime / 1_000_000; // Convert microseconds to seconds
-          if (totalTime > 0) {
-            setTokensPerSecond(metricsData.decodeLen / totalTime);
-          }
-        },
-        (error: string) => {
-          // Error handling
-          Alert.alert('Generation Error', error);
-        }
+  const renderTabBar = () => {
+    if (!isInitialized) return null;
+
+    const tabs: Array<{ screen: Screen; label: string; icon: string }> = [
+      { screen: 'chat', label: 'Chat', icon: '💬' },
+      { screen: 'config', label: 'Config', icon: '⚙️' },
+    ];
+
+    return (
+      <View style={styles.tabBar}>
+        {tabs.map((tab) => (
+          <TouchableOpacity
+            key={tab.screen}
+            style={[
+              styles.tab,
+              currentScreen === tab.screen && styles.tabActive,
+            ]}
+            onPress={() => setCurrentScreen(tab.screen)}
+          >
+            <Text style={styles.tabIcon}>{tab.icon}</Text>
+            <Text
+              style={[
+                styles.tabLabel,
+                currentScreen === tab.screen && styles.tabLabelActive,
+              ]}
+            >
+              {tab.label}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+    );
+  };
+
+  const renderScreen = () => {
+    if (isInitializing) {
+      return (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#007AFF" />
+          <Text style={styles.loadingText}>Initializing model...</Text>
+          <Text style={styles.loadingSubtext}>This may take a moment</Text>
+        </View>
       );
-
-      // Also update metrics from the promise result
-      setMetrics(finalMetrics);
-      const totalTime = finalMetrics.decodeTime / 1_000_000;
-      if (totalTime > 0) {
-        setTokensPerSecond(finalMetrics.decodeLen / totalTime);
-      }
-    } catch (error: any) {
-      Alert.alert('Generation Error', error.message || String(error));
-    } finally {
-      setIsGenerating(false);
     }
-  };
 
-  const handleStop = async () => {
-    try {
-      await session.stop();
-      setIsGenerating(false);
-    } catch (error: any) {
-      console.error('Stop error:', error);
-      setIsGenerating(false);
-    }
-  };
+    switch (currentScreen) {
+      case 'download':
+        return <DownloadScreen onDownloadComplete={handleDownloadComplete} />;
 
-  const handleClearHistory = async () => {
-    try {
-      await session.clearHistory();
-      Alert.alert('Success', 'Chat history cleared');
-    } catch (error: any) {
-      Alert.alert('Error', error.message || String(error));
+      case 'chat':
+        return (
+          <ChatScreen
+            session={session}
+            messages={messages}
+            onMessagesChange={setMessages}
+            onResetSession={handleResetSession}
+          />
+        );
+
+      case 'config':
+        return (
+          <ConfigScreen
+            config={config}
+            onConfigChange={setConfig}
+            onApplyConfig={handleApplyConfig}
+          />
+        );
+
+      default:
+        return null;
     }
   };
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
-        <Text style={styles.title}>MNN LLM React Native</Text>
+      <StatusBar barStyle="dark-content" backgroundColor="#fff" />
 
-        {/* Model Download Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>
-            Download Model from HuggingFace
-          </Text>
-          <TextInput
-            style={styles.input}
-            value={repoUrl}
-            onChangeText={setRepoUrl}
-            placeholder="HuggingFace repository URL"
-            editable={!isDownloading}
-          />
-          <TouchableOpacity
-            style={[styles.button, isDownloading && styles.buttonDisabled]}
-            onPress={handleDownloadModel}
-            disabled={isDownloading}
-          >
-            {isDownloading ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.buttonText}>Download Model</Text>
-            )}
-          </TouchableOpacity>
-
-          {/* Download Progress */}
-          {downloadProgress && (
-            <View style={styles.progressSection}>
-              <Text style={styles.progressText}>
-                Progress: {downloadProgress.downloadedFiles} /{' '}
-                {downloadProgress.totalFiles} files
-              </Text>
-              <Text style={styles.progressText}>
-                Current: {downloadProgress.currentFile}
-              </Text>
-              <Text style={styles.progressText}>
-                Downloaded:{' '}
-                {(downloadProgress.bytesDownloaded / 1024 / 1024).toFixed(2)} MB
-                / {(downloadProgress.totalBytes / 1024 / 1024).toFixed(2)} MB
-              </Text>
-              {downloadProgress.totalBytes > 0 && (
-                <View style={styles.progressBarContainer}>
-                  <View
-                    style={[
-                      styles.progressBar,
-                      {
-                        width: `${(downloadProgress.bytesDownloaded / downloadProgress.totalBytes) * 100}%`,
-                      },
-                    ]}
-                  />
-                </View>
-              )}
-            </View>
-          )}
-        </View>
-
-        {/* Model Configuration */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Model Configuration</Text>
-          <TextInput
-            style={styles.input}
-            value={modelPath}
-            onChangeText={setModelPath}
-            placeholder="Model directory path"
-            editable={!isInitialized}
-          />
-          <TouchableOpacity
-            style={[
-              styles.button,
-              (isInitialized || isInitializing) && styles.buttonDisabled,
-            ]}
-            onPress={handleInitialize}
-            disabled={isInitialized || isInitializing}
-          >
-            {isInitializing ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.buttonText}>
-                {isInitialized ? '✓ Initialized' : 'Initialize Model'}
-              </Text>
-            )}
-          </TouchableOpacity>
-        </View>
-
-        {/* Prompt Input */}
+      {/* Header */}
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>MNN LLM</Text>
         {isInitialized && (
-          <>
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Prompt</Text>
-              <TextInput
-                style={[styles.input, styles.textArea]}
-                value={prompt}
-                onChangeText={setPrompt}
-                placeholder="Enter your prompt here..."
-                multiline
-                numberOfLines={4}
-                editable={!isGenerating}
-              />
-              <View style={styles.buttonRow}>
-                {!isGenerating ? (
-                  <>
-                    <TouchableOpacity
-                      style={[styles.button, styles.buttonPrimary]}
-                      onPress={handleGenerate}
-                    >
-                      <Text style={styles.buttonText}>Generate</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.button, styles.buttonSecondary]}
-                      onPress={handleClearHistory}
-                    >
-                      <Text style={styles.buttonText}>Clear History</Text>
-                    </TouchableOpacity>
-                  </>
-                ) : (
-                  <TouchableOpacity
-                    style={[styles.button, styles.buttonStop]}
-                    onPress={handleStop}
-                  >
-                    <Text style={styles.buttonText}>⏹ Stop Generation</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            </View>
-
-            {/* Response Display */}
-            <View style={styles.section}>
-              <View style={styles.responseHeader}>
-                <Text style={styles.sectionTitle}>Response</Text>
-                {isGenerating && (
-                  <View style={styles.streamingIndicator}>
-                    <ActivityIndicator size="small" color="#007AFF" />
-                    <Text style={styles.streamingText}>Streaming...</Text>
-                  </View>
-                )}
-              </View>
-
-              <View style={styles.responseBox}>
-                <ScrollView style={styles.responseScroll}>
-                  <Text style={styles.responseText}>
-                    {response || 'Response will appear here...'}
-                  </Text>
-                </ScrollView>
-              </View>
-
-              {/* Token Counter */}
-              {(tokenCount > 0 || metrics) && (
-                <View style={styles.metricsBox}>
-                  <Text style={styles.metricsText}>
-                    Tokens: {metrics?.decodeLen || tokenCount}
-                  </Text>
-                  <Text style={styles.metricsText}>
-                    Speed: {tokensPerSecond.toFixed(1)} tok/s
-                  </Text>
-                </View>
-              )}
-
-              {/* Detailed Metrics */}
-              {metrics && (
-                <View style={styles.detailedMetrics}>
-                  <Text style={styles.metricsTitle}>Performance Metrics</Text>
-                  <Text style={styles.metricsDetail}>
-                    Prompt tokens: {metrics.promptLen}
-                  </Text>
-                  <Text style={styles.metricsDetail}>
-                    Generated tokens: {metrics.decodeLen}
-                  </Text>
-                  <Text style={styles.metricsDetail}>
-                    Prefill time: {(metrics.prefillTime / 1000).toFixed(2)} ms
-                  </Text>
-                  <Text style={styles.metricsDetail}>
-                    Decode time: {(metrics.decodeTime / 1000).toFixed(2)} ms
-                  </Text>
-                  <Text style={styles.metricsDetail}>
-                    Total time:{' '}
-                    {(
-                      (metrics.prefillTime + metrics.decodeTime) /
-                      1_000_000
-                    ).toFixed(2)}{' '}
-                    s
-                  </Text>
-                </View>
-              )}
-            </View>
-
-            {/* Example Prompts */}
-            <View style={styles.section}>
-              <Text style={styles.sectionTitle}>Example Prompts</Text>
-              <TouchableOpacity
-                style={styles.exampleButton}
-                onPress={() =>
-                  setPrompt('Write a haiku about React Native development')
-                }
-              >
-                <Text style={styles.exampleText}>Haiku about React Native</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.exampleButton}
-                onPress={() =>
-                  setPrompt('Explain quantum computing in simple terms')
-                }
-              >
-                <Text style={styles.exampleText}>
-                  Explain quantum computing
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.exampleButton}
-                onPress={() =>
-                  setPrompt('Write a function to sort an array in JavaScript')
-                }
-              >
-                <Text style={styles.exampleText}>JavaScript code example</Text>
-              </TouchableOpacity>
-            </View>
-          </>
+          <View style={styles.headerStatus}>
+            <View style={styles.statusIndicator} />
+            <Text style={styles.statusText}>Model Ready</Text>
+          </View>
         )}
-      </ScrollView>
+      </View>
+
+      {/* Main Content */}
+      <View style={styles.content}>{renderScreen()}</View>
+
+      {/* Tab Bar */}
+      {renderTabBar()}
     </SafeAreaView>
   );
 }
@@ -561,170 +248,89 @@ export default function App() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
-  },
-  scrollContent: {
-    padding: 16,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 20,
-    textAlign: 'center',
-    color: '#333',
-  },
-  section: {
-    marginBottom: 20,
     backgroundColor: '#fff',
-    borderRadius: 8,
-    padding: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 2,
   },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 12,
-    color: '#333',
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 12,
-    fontSize: 16,
-    backgroundColor: '#fafafa',
-  },
-  textArea: {
-    height: 100,
-    textAlignVertical: 'top',
-  },
-  button: {
-    backgroundColor: '#007AFF',
-    padding: 14,
-    borderRadius: 8,
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  buttonDisabled: {
-    backgroundColor: '#ccc',
-  },
-  buttonPrimary: {
-    flex: 1,
-    marginRight: 8,
-  },
-  buttonSecondary: {
-    flex: 1,
-    backgroundColor: '#666',
-  },
-  buttonStop: {
-    flex: 1,
-    backgroundColor: '#dc3545',
-  },
-  buttonText: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  buttonRow: {
-    flexDirection: 'row',
-  },
-  responseHeader: {
+  header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    paddingTop:
+      Platform.OS === 'android' ? (StatusBar.currentHeight || 0) + 12 : 12,
+    backgroundColor: '#fff',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e0e0e0',
   },
-  streamingIndicator: {
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#333',
+  },
+  headerStatus: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 6,
   },
-  streamingText: {
-    marginLeft: 8,
-    color: '#007AFF',
-    fontSize: 14,
+  statusIndicator: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: '#4CAF50',
   },
-  responseBox: {
-    borderWidth: 1,
-    borderColor: '#ddd',
-    borderRadius: 8,
-    backgroundColor: '#fafafa',
-    minHeight: 150,
-    maxHeight: 300,
+  statusText: {
+    fontSize: 12,
+    color: '#666',
+    fontWeight: '500',
   },
-  responseScroll: {
-    padding: 12,
+  content: {
+    flex: 1,
   },
-  responseText: {
-    fontSize: 16,
-    lineHeight: 24,
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#f5f5f5',
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 18,
+    fontWeight: '600',
     color: '#333',
   },
-  metricsBox: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginTop: 12,
-    padding: 12,
-    backgroundColor: '#f0f0f0',
-    borderRadius: 8,
-  },
-  metricsText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#007AFF',
-  },
-  detailedMetrics: {
-    marginTop: 12,
-    padding: 12,
-    backgroundColor: '#f9f9f9',
-    borderRadius: 8,
-  },
-  metricsTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 8,
-    color: '#333',
-  },
-  metricsDetail: {
+  loadingSubtext: {
+    marginTop: 8,
     fontSize: 14,
     color: '#666',
+  },
+  tabBar: {
+    flexDirection: 'row',
+    backgroundColor: '#fff',
+    borderTopWidth: 1,
+    borderTopColor: '#e0e0e0',
+    paddingBottom: 8,
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  tabActive: {
+    borderTopWidth: 2,
+    borderTopColor: '#007AFF',
+  },
+  tabIcon: {
+    fontSize: 24,
     marginBottom: 4,
   },
-  exampleButton: {
-    padding: 12,
-    backgroundColor: '#f0f0f0',
-    borderRadius: 8,
-    marginBottom: 8,
-  },
-  exampleText: {
-    fontSize: 14,
-    color: '#007AFF',
-  },
-  progressSection: {
-    marginTop: 12,
-    padding: 12,
-    backgroundColor: '#f9f9f9',
-    borderRadius: 8,
-  },
-  progressText: {
-    fontSize: 14,
+  tabLabel: {
+    fontSize: 12,
     color: '#666',
-    marginBottom: 6,
+    fontWeight: '500',
   },
-  progressBarContainer: {
-    height: 20,
-    backgroundColor: '#e0e0e0',
-    borderRadius: 10,
-    marginTop: 8,
-    overflow: 'hidden',
-  },
-  progressBar: {
-    height: '100%',
-    backgroundColor: '#007AFF',
-    borderRadius: 10,
+  tabLabelActive: {
+    color: '#007AFF',
+    fontWeight: '600',
   },
 });
